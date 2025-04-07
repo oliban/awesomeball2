@@ -318,58 +318,62 @@ export class Player {
             this.kickTimer += dt;
             const progress = Math.min(this.kickTimer / this.kickDuration, 1.0);
             
-            // Adjusted phase timing for faster kick
-            const windupEnd = 0.2; // Faster windup (20%)
-            const impactFrame = 0.4; // Earlier impact (40%)
+            const windupEnd = 0.2;
+            const impactFrame = 0.4;
             const followEnd = 1.0;
 
-            let relativeThighSwing = 0; 
-            let kickShinAngle = 0; 
+            let relativeThighSwing = 0;
+            let kickShinAngle = 0;
 
-            // Calculate relative thigh swing
+            // --- Calculate relative angles ---
+            // Thigh swing
             if (progress < windupEnd) { 
                 const phaseProgress = progress / windupEnd;
                 relativeThighSwing = lerp(0, -KICK_THIGH_WINDUP_REL, easeOutQuad(phaseProgress));
-            } else { // Swing forward: -WINDUP_REL -> +FOLLOW_REL (Linear)
+            } else { 
                 const phaseProgress = (progress - windupEnd) / (followEnd - windupEnd);
                 relativeThighSwing = lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
             }
-            const currentThighAngleRight = STAND_ANGLE + relativeThighSwing;
-
-            // Calculate relative shin angle
-             if (progress < windupEnd * 0.8) { 
+            // Shin angle
+            if (progress < windupEnd * 0.8) { 
                  const phaseProgress = progress / (windupEnd * 0.8);
                  kickShinAngle = lerp(0, KICK_SHIN_WINDUP_ANGLE, easeOutQuad(phaseProgress));
-            } else if (progress < impactFrame) { // Swing to Impact (EaseIn Quad)
+            } else if (progress < impactFrame) { 
                 const phaseProgress = (progress - (windupEnd * 0.8)) / (impactFrame - (windupEnd * 0.8));
                 kickShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, easeInQuad(phaseProgress));
-            } else { // Follow-through (EaseOut Quad)
+            } else { 
                 const phaseProgress = (progress - impactFrame) / (followEnd - impactFrame);
                 kickShinAngle = lerp(KICK_SHIN_IMPACT_ANGLE, 0, easeOutQuad(phaseProgress));
             }
-            
-            // Calculate arm angles for right kick perspective
+            // Arm angles (base for right kick)
             const armProgress = Math.sin(progress * Math.PI); 
             const armSwingMagnitude = Math.PI / 5;
             const rightKick_RightArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) - (armSwingMagnitude * armProgress);
             const rightKick_LeftArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) + (armSwingMagnitude * armProgress);
 
-            // Apply angles to targets based on ACTUAL direction
+            const nonKickingThighSwingFactor = 0.3; // Apply 30% of the kick swing in opposite direction
+
+            // --- Apply angles to targets based on ACTUAL direction --- 
             if (this.facingDirection === 1) { // Kicking Right
-                targetRightThigh = currentThighAngleRight;
-                targetRightShin = kickShinAngle;
-                targetLeftThigh = STAND_ANGLE;
+                targetRightThigh = STAND_ANGLE + relativeThighSwing; 
+                targetRightShin = -kickShinAngle;
+                targetLeftThigh = STAND_ANGLE - (relativeThighSwing * nonKickingThighSwingFactor); // Counter swing
                 targetLeftShin = 0;
                 targetRightArm = rightKick_RightArmTarget;
                 targetLeftArm = rightKick_LeftArmTarget;
             } else { // Kicking Left
-                targetLeftThigh = 2 * STAND_ANGLE - currentThighAngleRight;
-                targetLeftShin = kickShinAngle;
-                targetRightThigh = STAND_ANGLE;
+                targetLeftThigh = STAND_ANGLE - relativeThighSwing; // Mirrored relative swing
+                targetLeftShin = kickShinAngle; // Shin angle is relative
+                targetRightThigh = STAND_ANGLE + (relativeThighSwing * nonKickingThighSwingFactor); // Counter swing
                 targetRightShin = 0;
+                // Swap arm angles
                 targetLeftArm = rightKick_RightArmTarget; 
                 targetRightArm = rightKick_LeftArmTarget;
             }
+
+            // --- LOGGING FOR DEBUG ---
+            console.log(`Dir: ${this.facingDirection}, Prog: ${progress.toFixed(2)}, Thigh L/R: ${targetLeftThigh.toFixed(2)}/${targetRightThigh.toFixed(2)}, Shin L/R: ${targetLeftShin.toFixed(2)}/${targetRightShin.toFixed(2)}`);
+            // console.log(`Arm L/R: ${targetLeftArm.toFixed(2)}/${targetRightArm.toFixed(2)}`);
 
             if (this.kickTimer >= this.kickDuration) {
                 this.isKicking = false;
