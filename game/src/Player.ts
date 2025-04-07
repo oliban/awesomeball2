@@ -68,6 +68,11 @@ export class Player {
     rotationAngle: number; // For tumbling animation
     rotationVelocity: number; // For tumbling animation
 
+    // Properties for tracking kick impact
+    minKickDistSq: number = Infinity;
+    kickImpactForceX: number = 0;
+    kickImpactForceY: number = 0;
+
     // Appearance & Identification
     teamColor: string; // e.g., '#FFFFFF' or 'rgb(255, 255, 255)'
     teamAccent: string;
@@ -397,12 +402,13 @@ export class Player {
         }
 
         // --- Smoothly interpolate current angles towards target angles ---
-        this.leftThighAngle = lerp(this.leftThighAngle, targetLeftThigh, dt * RETURN_SPEED);
-        this.rightThighAngle = lerp(this.rightThighAngle, targetRightThigh, dt * RETURN_SPEED);
-        this.leftShinAngle = lerp(this.leftShinAngle, targetLeftShin, dt * RETURN_SPEED);
-        this.rightShinAngle = lerp(this.rightShinAngle, targetRightShin, dt * RETURN_SPEED);
-        this.leftArmAngle = lerp(this.leftArmAngle, targetLeftArm, dt * RETURN_SPEED);
-        this.rightArmAngle = lerp(this.rightArmAngle, targetRightArm, dt * RETURN_SPEED);
+        const lerpFactor = Math.min(1, dt * RETURN_SPEED); // Ensure factor is <= 1
+        this.leftThighAngle = lerp(this.leftThighAngle, targetLeftThigh, lerpFactor);
+        this.rightThighAngle = lerp(this.rightThighAngle, targetRightThigh, lerpFactor);
+        this.leftShinAngle = lerp(this.leftShinAngle, targetLeftShin, lerpFactor);
+        this.rightShinAngle = lerp(this.rightShinAngle, targetRightShin, lerpFactor);
+        this.leftArmAngle = lerp(this.leftArmAngle, targetLeftArm, lerpFactor);
+        this.rightArmAngle = lerp(this.rightArmAngle, targetRightArm, lerpFactor);
 
         // Update Tumble State
         if (this.isTumbling) {
@@ -437,6 +443,10 @@ export class Player {
             this.isKicking = true;
             this.kickTimer = 0; // Reset kick timer
             this.vx = 0; // Stop horizontal movement during kick (optional, like reference?)
+            // Reset kick impact tracking
+            this.minKickDistSq = Infinity;
+            this.kickImpactForceX = 0;
+            this.kickImpactForceY = 0;
             // TODO: Play kick sound
         }
     }
@@ -499,5 +509,23 @@ export class Player {
             this.kickTimer = 0;
             // TODO: Play tumble/stun sound?
         }
+    }
+
+    // Helper to get the absolute position of the foot (end of shin)
+    getFootPosition(isRightLeg: boolean): { x: number, y: number } {
+        const thighAngle = isRightLeg ? this.rightThighAngle : this.leftThighAngle;
+        const shinAngle = isRightLeg ? this.rightShinAngle : this.leftShinAngle;
+        const thighLength = this.legLength * 0.5;
+        const shinLength = this.legLength * 0.5;
+        const hipPos: Point = { 
+            x: this.x, 
+            y: this.y - this.legLength // Hip relative to feet Y
+        };
+
+        // Use the global calculateEndPoint, passing Point objects
+        const knee = calculateEndPoint(hipPos, thighLength, thighAngle); 
+        const foot = calculateEndPoint(knee, shinLength, thighAngle + shinAngle);
+
+        return foot;
     }
 } 

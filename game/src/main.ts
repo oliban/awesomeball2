@@ -1,5 +1,6 @@
 import './style.css'
 import { Player } from './Player'
+import { Ball } from './Ball'
 
 // --- Constants (Based on reference/awesome-ball/main.py) ---
 const SCREEN_WIDTH = 800
@@ -48,6 +49,13 @@ const player2 = new Player(
     GRAVITY,
     BASE_JUMP_POWER,
     BASE_PLAYER_SPEED
+)
+
+// Create Ball
+const ball = new Ball(
+    SCREEN_WIDTH / 2, // Start in center
+    GROUND_Y - 100, // Start above ground
+    GRAVITY // Use same gravity
 )
 
 console.log('Player 1:', player1)
@@ -224,6 +232,91 @@ function handlePlayerCollisions(p1: Player, p2: Player) {
     }
 }
 
+// --- NEW: Handle Ball Collisions ---
+function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
+    // Fine-tune impact window and collision radius
+    const KICK_IMPACT_START_PROGRESS = 0.20; // Slightly earlier check
+    const KICK_IMPACT_END_PROGRESS = 0.50;   // Slightly later check 
+    const KICK_FORCE_HORIZONTAL = 600;      // Adjust strength as needed
+    const KICK_FORCE_VERTICAL = -450;       // Adjust vertical lift as needed
+    const KICK_FOOT_RADIUS = 10;           // Reduced test radius (was 20, orig 5)
+
+    const players = [p1, p2];
+
+    for (const player of players) {
+        if (player.isKicking) {
+            const progress = player.kickTimer / player.kickDuration;
+            const isKickingRightLeg = player.facingDirection === 1;
+            const footPos = player.getFootPosition(isKickingRightLeg);
+            const dx = ball.x - footPos.x;
+            const dy = ball.y - footPos.y;
+            const distanceSq = dx * dx + dy * dy;
+            const collisionDistance = ball.radius + KICK_FOOT_RADIUS;
+            const collisionDistanceSq = collisionDistance * collisionDistance;
+
+            // --- DETAILED KICK LOGGING (Log always during kick) ---
+            console.log(`Kick Check: Prog=${progress.toFixed(2)}, Foot=(${footPos.x.toFixed(0)}, ${footPos.y.toFixed(0)}), Ball=(${ball.x.toFixed(0)}, ${ball.y.toFixed(0)}), DistSq=${distanceSq.toFixed(0)}, NeededSq=${collisionDistanceSq.toFixed(0)}`);
+            // ------------------------------
+
+            if (distanceSq <= collisionDistanceSq) { // Check distance ANY time during kick
+                // Collision detected during kick impact!
+                console.log("Kick collision! --- FORCE APPLIED ---"); // Make log clearer
+                const kickDirX = player.facingDirection;
+                ball.applyKick(kickDirX * KICK_FORCE_HORIZONTAL, KICK_FORCE_VERTICAL);
+
+                // Prevent multiple hits per kick (IMPORTANT NOW)
+                player.isKicking = false; 
+                player.kickTimer = player.kickDuration; // Force kick to end
+                // Ideally, add a flag player.hasHitBallThisKick and check it here
+            }
+        }
+
+        // --- Other Ball/Player Collisions (Body/Head) ---
+        // TODO: Implement simple circle-rect or circle-circle collision for body/head
+        const bodyRect = player.getBodyRect();
+        const headCircle = player.getHeadCircle();
+
+        // Check collision with body (Simplified AABB vs Circle for now)
+        const closestX = Math.max(bodyRect.x, Math.min(ball.x, bodyRect.x + bodyRect.width));
+        const closestY = Math.max(bodyRect.y, Math.min(ball.y, bodyRect.y + bodyRect.height));
+        const distXBody = ball.x - closestX;
+        const distYBody = ball.y - closestY;
+        const distanceSqBody = (distXBody * distXBody) + (distYBody * distYBody);
+
+        if (distanceSqBody < ball.radius * ball.radius) {
+             console.log("Body collision");
+             // Simple bounce response: push ball away from player center
+             const pushX = ball.x - player.x;
+             const pushY = ball.y - (player.y - player.legLength * 0.5); // Push from player center-ish Y
+             const pushMagnitude = Math.sqrt(pushX * pushX + pushY * pushY);
+             const pushForce = 150; // Adjust force
+             if (pushMagnitude > 0) {
+                ball.vx += (pushX / pushMagnitude) * pushForce * 0.1; // Less horizontal push
+                ball.vy += (pushY / pushMagnitude) * pushForce;
+                // Dampen player velocity slightly on collision?
+                // player.vx *= 0.95;
+             }
+        }
+
+        // Check collision with head (Circle vs Circle)
+        const dxHead = ball.x - headCircle.x;
+        const dyHead = ball.y - headCircle.y;
+        const distSqHead = dxHead*dxHead + dyHead*dyHead;
+        const radiiSum = ball.radius + headCircle.radius;
+
+        if (distSqHead < radiiSum * radiiSum) {
+            console.log("Head collision");
+             // Simple bounce: push ball away from head center
+             const pushMagnitude = Math.sqrt(distSqHead);
+             const pushForce = 300; // More force for headers
+             if (pushMagnitude > 0) {
+                ball.vx += (dxHead / pushMagnitude) * pushForce;
+                ball.vy += (dyHead / pushMagnitude) * pushForce * 1.2; // More vertical push for headers
+             }
+        }
+    }
+}
+
 // Keep the dev server running, but comment out loop start for now
 console.log('Game setup complete. Loop not started yet.')
 
@@ -256,20 +349,25 @@ function gameLoop(timestamp: number) {
     // --- Update game state --- 
     player1.update(dt, GROUND_Y, SCREEN_WIDTH);
     player2.update(dt, GROUND_Y, SCREEN_WIDTH);
-    // ball.update(dt);
-    // handleCollisions();
-    // checkGoal();
-    // updatePowerups();
+    ball.update(dt, GROUND_Y, SCREEN_WIDTH);
+
+    // --- Player 2 Debug Logging ---
+    if (pressedKeys.has('ArrowLeft') || pressedKeys.has('ArrowRight')) {
+        console.log(`P2 State: vx=${player2.vx.toFixed(1)}, isKicking=${player2.isKicking}, isTumbling=${player2.isTumbling}, Keys: ${Array.from(pressedKeys).join(', ')}`);
+    }
+    // -----------------------------
 
     // --- Handle Collisions ---
     handlePlayerCollisions(player1, player2);
+    handleBallCollisions(ball, player1, player2);
+    // TODO: handleBallCollisions(ball, player1, player2);
 
     // --- Draw everything --- 
     // drawBackground(ctx)
     // drawField(ctx)
     player1.draw(ctx!)
     player2.draw(ctx!)
-    // ball.draw(ctx)
+    ball.draw(ctx!)
     // drawPowerups(ctx)
     // drawScoreboard(ctx)
 
