@@ -21,6 +21,28 @@ const LEG_THIGH_SWING = Math.PI / 7.0;
 const RUN_UPPER_ARM_SWING = Math.PI / 6.0;
 const STAND_ANGLE = -Math.PI / 2; // Straight down
 
+// Kick Animation Constants (Relative Pendulum)
+const KICK_THIGH_WINDUP_REL = Math.PI / 2.5; // Angle *back* from vertical (e.g., 72 deg)
+const KICK_THIGH_FOLLOW_REL = Math.PI / 1.5; // Keep angle *forward* MORE from vertical (e.g., 120 deg -> above horizontal)
+const KICK_SHIN_WINDUP_ANGLE = Math.PI * 0.6; // Bend shin back relative to thigh
+const KICK_SHIN_IMPACT_ANGLE = -Math.PI * 0.15; // Extend shin more at impact
+const KICK_DURATION_SECONDS = 0.45; // Faster duration again (was 0.9)
+
+// Animation speed for returning limbs to neutral
+const RETURN_SPEED = 25.0; // Increased from 15.0 for faster snapping
+
+// Helper for linear interpolation
+function lerp(start: number, end: number, t: number): number {
+    return start * (1 - t) + end * t;
+}
+
+// Simple easing functions
+function easeInQuad(t: number): number { return t * t; }
+function easeOutQuad(t: number): number { return t * (2 - t); }
+function easeInOutQuad(t: number): number { 
+    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; 
+}
+
 export class Player {
     // Position and Velocity
     x: number;
@@ -33,7 +55,7 @@ export class Player {
     isJumping: boolean;
     isKicking: boolean;
     kickTimer: number;
-    kickDuration: number; // Should match animation/logic time
+    kickDuration: number = KICK_DURATION_SECONDS; 
     walkCycleTimer: number;
     facingDirection: 1 | -1; // 1 for right, -1 for left
     onOtherPlayerHead: boolean = false;
@@ -118,7 +140,6 @@ export class Player {
         this.isJumping = false;
         this.isKicking = false;
         this.kickTimer = 0;
-        this.kickDuration = 24 / 60; // Example: 24 frames at 60 FPS = 0.4 seconds
         this.walkCycleTimer = 0;
         this.facingDirection = facing;
         this.onLeftCrossbar = false;
@@ -146,14 +167,7 @@ export class Player {
         this.jumpPower = jumpPower;
         this.playerSpeed = playerSpeed;
 
-        // Remove angle setting from constructor, use property defaults
-        // const standAngle = -Math.PI / 2;
-        // this.leftThighAngle = standAngle;
-        // this.rightThighAngle = standAngle;
-        // this.leftShinAngle = 0; 
-        // this.rightShinAngle = 0;
-        // this.leftArmAngle = standAngle;
-        // this.rightArmAngle = standAngle;
+        this.kickDuration = KICK_DURATION_SECONDS; // Ensure constant is used
     }
 
     // --- Methods will be added below ---
@@ -209,9 +223,23 @@ export class Player {
         ctx.beginPath();
         ctx.arc(headCenter.x, headCenter.y, this.headRadius, 0, Math.PI * 2);
         ctx.fill();
-        // TODO: Draw eyes
+        
+        // 3. Eyes
+        const eyeRadius = this.headRadius * 0.15;
+        const eyeOffsetX = this.headRadius * 0.4 * this.facingDirection; // Offset based on direction
+        const eyeOffsetY = -this.headRadius * 0.2;
+        const leftEyePos: Point = { x: headCenter.x + eyeOffsetX - eyeRadius * 1.5 * this.facingDirection, y: headCenter.y + eyeOffsetY };
+        const rightEyePos: Point = { x: headCenter.x + eyeOffsetX + eyeRadius * 1.5 * this.facingDirection, y: headCenter.y + eyeOffsetY };
 
-        // 3. Arms (Shoulder -> Elbow -> Hand)
+        ctx.fillStyle = this.eyeColor;
+        ctx.beginPath();
+        ctx.arc(leftEyePos.x, leftEyePos.y, eyeRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(rightEyePos.x, rightEyePos.y, eyeRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 4. Arms (Shoulder -> Elbow -> Hand)
         ctx.strokeStyle = this.teamAccent;
         ctx.beginPath();
         ctx.moveTo(leftShoulderPos.x, leftShoulderPos.y);
@@ -225,7 +253,7 @@ export class Player {
         ctx.lineTo(rightHandPos.x, rightHandPos.y);
         ctx.stroke();
 
-        // 4. Legs (Hip -> Knee -> Foot)
+        // 5. Legs (Hip -> Knee -> Foot)
         ctx.strokeStyle = this.teamColor;
         ctx.beginPath();
         ctx.moveTo(hipPos.x, hipPos.y);
@@ -279,38 +307,134 @@ export class Player {
         }
 
         // --- Update Animation --- 
-        if (isOnGround && this.vx !== 0) {
-            // Walking animation
+        let targetLeftThigh = STAND_ANGLE;
+        let targetRightThigh = STAND_ANGLE;
+        let targetLeftShin = 0;
+        let targetRightShin = 0;
+        let targetLeftArm = STAND_ANGLE;
+        let targetRightArm = STAND_ANGLE;
+
+        if (this.isKicking) {
+            this.kickTimer += dt;
+            const progress = Math.min(this.kickTimer / this.kickDuration, 1.0);
+            
+            // Adjusted phase timing for faster kick
+            const windupEnd = 0.2; // Faster windup (20%)
+            const impactFrame = 0.4; // Earlier impact (40%)
+            const followEnd = 1.0;
+
+            let relativeThighSwing = 0; 
+            let kickShinAngle = 0; 
+
+            // Calculate relative thigh swing
+            if (progress < windupEnd) { 
+                const phaseProgress = progress / windupEnd;
+                relativeThighSwing = lerp(0, -KICK_THIGH_WINDUP_REL, easeOutQuad(phaseProgress));
+            } else { // Swing forward: -WINDUP_REL -> +FOLLOW_REL (Linear)
+                const phaseProgress = (progress - windupEnd) / (followEnd - windupEnd);
+                relativeThighSwing = lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
+            }
+            const currentThighAngleRight = STAND_ANGLE + relativeThighSwing;
+
+            // Calculate relative shin angle
+             if (progress < windupEnd * 0.8) { 
+                 const phaseProgress = progress / (windupEnd * 0.8);
+                 kickShinAngle = lerp(0, KICK_SHIN_WINDUP_ANGLE, easeOutQuad(phaseProgress));
+            } else if (progress < impactFrame) { // Swing to Impact (EaseIn Quad)
+                const phaseProgress = (progress - (windupEnd * 0.8)) / (impactFrame - (windupEnd * 0.8));
+                kickShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, easeInQuad(phaseProgress));
+            } else { // Follow-through (EaseOut Quad)
+                const phaseProgress = (progress - impactFrame) / (followEnd - impactFrame);
+                kickShinAngle = lerp(KICK_SHIN_IMPACT_ANGLE, 0, easeOutQuad(phaseProgress));
+            }
+            
+            // Calculate arm angles for right kick perspective
+            const armProgress = Math.sin(progress * Math.PI); 
+            const armSwingMagnitude = Math.PI / 5;
+            const rightKick_RightArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) - (armSwingMagnitude * armProgress);
+            const rightKick_LeftArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) + (armSwingMagnitude * armProgress);
+
+            // Apply angles to targets based on ACTUAL direction
+            if (this.facingDirection === 1) { // Kicking Right
+                targetRightThigh = currentThighAngleRight;
+                targetRightShin = kickShinAngle;
+                targetLeftThigh = STAND_ANGLE;
+                targetLeftShin = 0;
+                targetRightArm = rightKick_RightArmTarget;
+                targetLeftArm = rightKick_LeftArmTarget;
+            } else { // Kicking Left
+                targetLeftThigh = 2 * STAND_ANGLE - currentThighAngleRight;
+                targetLeftShin = kickShinAngle;
+                targetRightThigh = STAND_ANGLE;
+                targetRightShin = 0;
+                targetLeftArm = rightKick_RightArmTarget; 
+                targetRightArm = rightKick_LeftArmTarget;
+            }
+
+            if (this.kickTimer >= this.kickDuration) {
+                this.isKicking = false;
+                this.kickTimer = 0;
+            }
+        } else if (isOnGround && this.vx !== 0) {
+            // Walking animation - Calculate target angles for walking
             this.walkCycleTimer += dt * WALK_CYCLE_SPEED;
             const walkSin = Math.sin(this.walkCycleTimer);
-
-            // Legs swing opposite to each other
-            this.leftThighAngle = STAND_ANGLE - LEG_THIGH_SWING * walkSin * this.facingDirection;
-            this.rightThighAngle = STAND_ANGLE + LEG_THIGH_SWING * walkSin * this.facingDirection;
-            // TODO: Add shin bend based on walk cycle
-            this.leftShinAngle = 0; // Keep straight for now
-            this.rightShinAngle = 0; 
-
-            // Arms swing opposite to legs and each other
-            this.leftArmAngle = STAND_ANGLE + RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
-            this.rightArmAngle = STAND_ANGLE - RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
-
+            targetLeftThigh = STAND_ANGLE - LEG_THIGH_SWING * walkSin * this.facingDirection;
+            targetRightThigh = STAND_ANGLE + LEG_THIGH_SWING * walkSin * this.facingDirection;
+            targetLeftShin = 0; 
+            targetRightShin = 0; 
+            targetLeftArm = STAND_ANGLE + RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
+            targetRightArm = STAND_ANGLE - RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
         } else {
-            // Standing or Jumping pose
-            this.walkCycleTimer = 0; // Reset timer when not walking
-            // TODO: Implement specific jumping pose angles
-            this.leftThighAngle = STAND_ANGLE;
-            this.rightThighAngle = STAND_ANGLE;
-            this.leftShinAngle = 0;
-            this.rightShinAngle = 0;
-            this.leftArmAngle = STAND_ANGLE;
-            this.rightArmAngle = STAND_ANGLE;
+            // Standing or Jumping pose - Target angles are STAND_ANGLE / default shin
+            this.walkCycleTimer = 0; 
+            // Target angles are already set to STAND_ANGLE/0 initially
+             // TODO: Implement specific jumping pose target angles
         }
 
-        // TODO: Update kick animation timer
-        // TODO: Update tumble animation timer/rotation
+        // --- Smoothly interpolate current angles towards target angles ---
+        this.leftThighAngle = lerp(this.leftThighAngle, targetLeftThigh, dt * RETURN_SPEED);
+        this.rightThighAngle = lerp(this.rightThighAngle, targetRightThigh, dt * RETURN_SPEED);
+        this.leftShinAngle = lerp(this.leftShinAngle, targetLeftShin, dt * RETURN_SPEED);
+        this.rightShinAngle = lerp(this.rightShinAngle, targetRightShin, dt * RETURN_SPEED);
+        this.leftArmAngle = lerp(this.leftArmAngle, targetLeftArm, dt * RETURN_SPEED);
+        this.rightArmAngle = lerp(this.rightArmAngle, targetRightArm, dt * RETURN_SPEED);
+
+        // Update Tumble State
+        if (this.isTumbling) {
+            this.tumbleTimer -= dt;
+            // TODO: Apply rotation based on rotationVelocity for drawing
+            // this.rotationAngle += this.rotationVelocity * dt;
+            if (this.tumbleTimer <= 0) {
+                this.isTumbling = false;
+                this.tumbleTimer = 0;
+                this.rotationAngle = 0;
+                this.rotationVelocity = 0;
+                // Reset angles to standing after tumble
+                this.leftThighAngle = STAND_ANGLE;
+                this.rightThighAngle = STAND_ANGLE;
+                this.leftShinAngle = 0;
+                this.rightShinAngle = 0;
+                this.leftArmAngle = STAND_ANGLE;
+                this.rightArmAngle = STAND_ANGLE;
+            }
+        }
+
         // TODO: Handle stun timer
         // TODO: Update powerup timers
+    }
+
+    /**
+     * Initiates the kick action if the player is not already kicking.
+     */
+    startKick() {
+        // Add checks for stunned/tumbling later
+        if (!this.isKicking) {
+            this.isKicking = true;
+            this.kickTimer = 0; // Reset kick timer
+            this.vx = 0; // Stop horizontal movement during kick (optional, like reference?)
+            // TODO: Play kick sound
+        }
     }
 
     /**
@@ -353,5 +477,23 @@ export class Player {
             width: width,
             height: height
         };
+    }
+
+    /**
+     * Starts the tumble animation.
+     */
+    startTumble() {
+        if (!this.isTumbling) { // Prevent re-triggering mid-tumble
+            this.isTumbling = true;
+            // TODO: Define tumble duration constant
+            this.tumbleTimer = 2.0; // Example duration
+            // TODO: Define tumble rotation speed constants
+            const minRotSpeed = 3.0 * Math.PI; // Radians per second
+            const maxRotSpeed = 5.0 * Math.PI;
+            this.rotationVelocity = (Math.random() * (maxRotSpeed - minRotSpeed) + minRotSpeed) * (Math.random() < 0.5 ? 1 : -1);
+            this.isKicking = false; // Cancel kick if tumbling
+            this.kickTimer = 0;
+            // TODO: Play tumble/stun sound?
+        }
     }
 } 

@@ -68,7 +68,15 @@ document.addEventListener('keydown', (event) => {
         player2.jump();
     }
 
-    // TODO: Handle kick input (e.g., 's' and 'ArrowDown')
+    // Handle kick input
+    if (event.key === 's') {
+        player1.startKick();
+    }
+    if (event.key === 'ArrowDown') {
+        player2.startKick();
+    }
+
+    // TODO: Handle other inputs like pause, debug toggle?
 });
 
 document.addEventListener('keyup', (event) => {
@@ -180,6 +188,39 @@ function handlePlayerCollisions(p1: Player, p2: Player) {
             p2.isJumping = false;
             p2.onOtherPlayerHead = true;
          }
+    }
+
+    // 3. Kick Collision (Tackle/Tumble)
+    const kickImpactStart = 0.2; // When kick becomes active (fraction of kickDuration)
+    const kickImpactEnd = 0.5;   // When kick becomes inactive
+
+    if (p1.isKicking) {
+        const progress = p1.kickTimer / p1.kickDuration;
+        if (progress >= kickImpactStart && progress <= kickImpactEnd) {
+            const p1KickerRect = p1.getBodyRect(); // Use body rect for simple kick collision
+            // Maybe refine kicker rect to be just the foot later
+            if (checkRectCollision(p1KickerRect, body2)) {
+                if (!p2.isTumbling) { // Don't tumble if already tumbling
+                     p2.startTumble();
+                     // TODO: Apply some knockback velocity to p2?
+                     // p2.vy = -200; 
+                     // p2.vx = p1.facingDirection * 100;
+                }
+            }
+        }
+    }
+
+    if (p2.isKicking) {
+        const progress = p2.kickTimer / p2.kickDuration;
+        if (progress >= kickImpactStart && progress <= kickImpactEnd) {
+            const p2KickerRect = p2.getBodyRect(); // Use body rect for simple kick collision
+            if (checkRectCollision(p2KickerRect, body1)) {
+                 if (!p1.isTumbling) {
+                     p1.startTumble();
+                     // TODO: Apply knockback?
+                }
+            }
+        }
     }
 }
 
