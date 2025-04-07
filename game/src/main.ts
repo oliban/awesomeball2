@@ -25,7 +25,7 @@ const GOAL_WIDTH = 50;       // Width of the goal opening (halved)
 const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT; // Y position of the top of the net/bottom of crossbar
 const LEFT_GOAL_X = 0;       // Left edge of the left goal structure
 const RIGHT_GOAL_X = SCREEN_WIDTH - GOAL_WIDTH; // Left edge of the right goal structure
-const POST_BOUNCE = 0.6;     // How bouncy the crossbar is
+const POST_BOUNCE = 0.8;     // NEW - Bouncier!
 
 // --- Score Keeping (RE-ADDED) ---
 let player1Score = 0;
@@ -215,6 +215,60 @@ function drawGoals(ctx: CanvasRenderingContext2D) {
     }
 }
 
+// --- NEW: Function to draw the scoreboard ---
+function drawScoreboard(ctx: CanvasRenderingContext2D, score1: number, score2: number) {
+    const scoreText = `${score1} - ${score2}`;
+    const fontSize = 32;
+    ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    
+    // Draw outline first
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 3;
+    ctx.strokeText(scoreText, SCREEN_WIDTH / 2, 10);
+
+    // Draw filled text
+    ctx.fillStyle = 'white';
+    ctx.fillText(scoreText, SCREEN_WIDTH / 2, 10);
+}
+
+// --- NEW: Function to reset positions after goal ---
+function resetPositions(ball: Ball, p1: Player, p2: Player) {
+    // Reset Ball
+    ball.x = SCREEN_WIDTH / 2;
+    ball.y = GROUND_Y - 100; // Start above ground
+    ball.vx = 0;
+    ball.vy = 0;
+
+    // Reset Player 1
+    p1.x = SCREEN_WIDTH * 0.25;
+    p1.y = GROUND_Y;
+    p1.vx = 0;
+    p1.vy = 0;
+    p1.facingDirection = 1;
+    p1.isKicking = false;
+    p1.isJumping = false;
+    p1.isTumbling = false;
+    p1.tumbleTimer = 0;
+    p1.kickTimer = 0;
+    // Reset angles?
+    // p1.leftThighAngle = STAND_ANGLE; etc.
+
+    // Reset Player 2
+    p2.x = SCREEN_WIDTH * 0.75;
+    p2.y = GROUND_Y;
+    p2.vx = 0;
+    p2.vy = 0;
+    p2.facingDirection = -1;
+    p2.isKicking = false;
+    p2.isJumping = false;
+    p2.isTumbling = false;
+    p2.tumbleTimer = 0;
+    p2.kickTimer = 0;
+    // Reset angles?
+}
+
 // --- Collision Detection Functions ---
 function checkRectCollision(rect1: any, rect2: any): boolean {
     return (
@@ -326,7 +380,7 @@ function handlePlayerCollisions(p1: Player, p2: Player) {
     }
 }
 
-// --- NEW: Handle Ball Collisions ---
+// --- Handle Ball Collisions ---
 function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
     // Fine-tune impact window and collision radius
     const KICK_IMPACT_START_PROGRESS = 0.20; // Slightly earlier check
@@ -435,8 +489,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                 player1Score++;
                 console.log(`%cGOAL for Player 1! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: blue; font-weight: bold;');
             }
-            console.log("Resetting positions (TODO: Implement reset)");
-            // TODO: Call a function like resetPositions(ball, p1, p2);
+            resetPositions(ball, p1, p2); // NEW Call
             return; // Exit collision handling for this frame
         }
     }
@@ -485,14 +538,18 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
             } else { // Collision is more vertical 
                 if (distY < 0) { // Hit TOP of crossbar 
                      console.log(' Top hit');
+                    // Position correction first
+                    ball.y += penetrationY - 0.1; 
+                    // Then apply bounce
                     ball.vy = Math.abs(ball.vy * POST_BOUNCE); 
-                    if (ball.vy < 50) ball.vy = 50; 
-                    ball.y += penetrationY - 0.1; // Push out vertically (up) - Keep overlap push for top hits
+                    // Ensure minimum downward speed
+                    if (ball.vy < 30) ball.vy = 30; // NEW Lower Minimum
                 } else { // Hit BOTTOM of crossbar 
                      console.log(' Bottom hit');
+                    // Bounce first
                     ball.vy = -Math.abs(ball.vy * POST_BOUNCE); 
-                    // Add a stronger base velocity upward
-                    if (Math.abs(ball.vy) < 200) ball.vy = -200; // Increased Minimum
+                    // Add extra upward speed if bounce was weak
+                    if (ball.vy > -80) ball.vy -= 80; // NEW Additive Minimum
                     // Set position clearly below
                     ball.y = post.y + post.height + ball.radius + 0.5; // Direct Placement with larger buffer
                     // ADD small horizontal nudge away from post center
@@ -558,6 +615,9 @@ function gameLoop(timestamp: number) {
     ball.draw(ctx!)
     // drawPowerups(ctx)
     // drawScoreboard(ctx)
+
+    // --- Draw Scoreboard (ADDED CALL) ---
+    drawScoreboard(ctx!, player1Score, player2Score);
 
     // Request next frame
     requestAnimationFrame(gameLoop)
