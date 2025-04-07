@@ -18,6 +18,19 @@ const P2_COLOR_ACCENT = '#CE2B37' // Italy Red
 const SKY_BLUE = '#87CEEB'
 const GRASS_GREEN = '#228B22'
 
+// Goal Constants (RE-ADDED)
+const POST_THICKNESS = 8;      // Thickness of the crossbar & back pole
+const GOAL_HEIGHT = 150;     // Height of the net area below crossbar / height of back pole
+const GOAL_WIDTH = 50;       // Width of the goal opening (halved)
+const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT; // Y position of the top of the net/bottom of crossbar
+const LEFT_GOAL_X = 0;       // Left edge of the left goal structure
+const RIGHT_GOAL_X = SCREEN_WIDTH - GOAL_WIDTH; // Left edge of the right goal structure
+const POST_BOUNCE = 0.6;     // How bouncy the crossbar is
+
+// --- Score Keeping (RE-ADDED) ---
+let player1Score = 0;
+let player2Score = 0;
+
 // --- Game Setup ---
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement
 const ctx = canvas.getContext('2d')
@@ -118,6 +131,87 @@ function handleInput() {
      // If both or neither are pressed, stop horizontal movement
     } else {
         player2.vx = 0;
+    }
+}
+
+// --- NEW: Draw Goals function ---
+function drawGoals(ctx: CanvasRenderingContext2D) {
+    const goalColor = '#FFFFFF'; // White goals
+    ctx.fillStyle = goalColor;
+    ctx.strokeStyle = '#000000'; // Black outline
+    ctx.lineWidth = 2;
+
+    // Define goal structure using constants - ONLY CROSSBARS for drawing
+    const goalDrawRects = [
+        // Left Goal Crossbar
+        { x: LEFT_GOAL_X, y: GOAL_Y_POS - POST_THICKNESS, width: GOAL_WIDTH, height: POST_THICKNESS }, 
+        // Right Goal Crossbar
+        { x: RIGHT_GOAL_X, y: GOAL_Y_POS - POST_THICKNESS, width: GOAL_WIDTH, height: POST_THICKNESS },
+    ];
+
+    // Draw only the crossbars (Adjust Y position to sit *above* GOAL_Y_POS)
+    for (const rect of goalDrawRects) {
+        ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+        ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+    }
+
+    // Optional: Draw a simple net pattern (behind posts)
+    ctx.strokeStyle = 'rgba(200, 200, 200, 0.8)'; // MORE VISIBLE NET
+    const netSpacing = 10;
+    const netDepth = 30; // How deep the net appears visually
+
+    // Left Goal Net
+    const leftNetTop = GOAL_Y_POS; // Net starts below crossbar
+    const leftNetBottom = GROUND_Y;
+    const leftNetBackX = LEFT_GOAL_X + netDepth; // Back of the net
+    // Slanted vertical lines?
+    // Horizontal lines
+    for (let y = leftNetTop; y < leftNetBottom; y += netSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(LEFT_GOAL_X, y);
+        ctx.lineTo(LEFT_GOAL_X + GOAL_WIDTH, y); // Span the goal width
+        ctx.stroke();
+    }
+    // Vertical Lines
+    for (let x = LEFT_GOAL_X; x < LEFT_GOAL_X + GOAL_WIDTH; x += netSpacing) {
+         ctx.beginPath();
+         ctx.moveTo(x, leftNetTop);
+         ctx.lineTo(x, leftNetBottom); 
+         ctx.stroke();
+    }
+
+     // Right Goal Net
+    const rightNetTop = GOAL_Y_POS; // Net starts below crossbar
+    const rightNetBottom = GROUND_Y;
+    const rightNetBackX = RIGHT_GOAL_X + GOAL_WIDTH - netDepth; // Back of the net
+    // Horizontal lines
+    for (let y = rightNetTop; y < rightNetBottom; y += netSpacing) {
+        ctx.beginPath();
+        ctx.moveTo(RIGHT_GOAL_X, y);
+        ctx.lineTo(RIGHT_GOAL_X + GOAL_WIDTH, y); // Span the goal width
+        ctx.stroke();
+    }
+     // Vertical lines
+    for (let x = RIGHT_GOAL_X; x < RIGHT_GOAL_X + GOAL_WIDTH; x += netSpacing) {
+         ctx.beginPath();
+         ctx.moveTo(x, rightNetTop);
+         ctx.lineTo(x, rightNetBottom);
+         ctx.stroke();
+    }
+
+    // Draw the visual Back Poles (AFTER net)
+    ctx.fillStyle = goalColor; // Use same color as crossbar
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 2;
+    const backPoles = [
+        // Left Goal Back Pole
+        { x: LEFT_GOAL_X, y: GOAL_Y_POS, width: POST_THICKNESS, height: GOAL_HEIGHT },
+        // Right Goal Back Pole
+        { x: SCREEN_WIDTH - POST_THICKNESS, y: GOAL_Y_POS, width: POST_THICKNESS, height: GOAL_HEIGHT },
+    ];
+    for (const pole of backPoles) {
+        ctx.fillRect(pole.x, pole.y, pole.width, pole.height);
+        ctx.strokeRect(pole.x, pole.y, pole.width, pole.height);
     }
 }
 
@@ -315,6 +409,99 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              }
         }
     }
+
+    // --- GOAL CHECK (Before Bounces) ---
+    const backPoles = [
+        // Left Goal Back Pole (Goal for P2)
+        { x: LEFT_GOAL_X, y: GOAL_Y_POS, width: POST_THICKNESS, height: GOAL_HEIGHT },
+        // Right Goal Back Pole (Goal for P1)
+        { x: SCREEN_WIDTH - POST_THICKNESS, y: GOAL_Y_POS, width: POST_THICKNESS, height: GOAL_HEIGHT },
+    ];
+
+    for (const pole of backPoles) {
+        // Use Circle-Rect Collision check (adapted from crossbar logic)
+        const closestX = Math.max(pole.x, Math.min(ball.x, pole.x + pole.width));
+        const closestY = Math.max(pole.y, Math.min(ball.y, pole.y + pole.height));
+        const distX = ball.x - closestX;
+        const distY = ball.y - closestY;
+        const distanceSq = distX*distX + distY*distY;
+
+        if (distanceSq < ball.radius * ball.radius) {
+            // GOAL SCORED!
+            if (pole.x < SCREEN_WIDTH / 2) { // Left pole hit
+                player2Score++;
+                console.log(`%cGOAL for Player 2! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: green; font-weight: bold;');
+            } else { // Right pole hit
+                player1Score++;
+                console.log(`%cGOAL for Player 1! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: blue; font-weight: bold;');
+            }
+            console.log("Resetting positions (TODO: Implement reset)");
+            // TODO: Call a function like resetPositions(ball, p1, p2);
+            return; // Exit collision handling for this frame
+        }
+    }
+
+    // --- Crossbar Collisions (ONLY CROSSBARS) ---
+    const crossbars = [
+        // Left Goal Crossbar
+        { x: LEFT_GOAL_X, y: GOAL_Y_POS - POST_THICKNESS, width: GOAL_WIDTH, height: POST_THICKNESS },
+        // Right Goal Crossbar
+        { x: RIGHT_GOAL_X, y: GOAL_Y_POS - POST_THICKNESS, width: GOAL_WIDTH, height: POST_THICKNESS },
+    ];
+
+    for (const post of crossbars) { // Renamed loop variable for clarity
+        // REMOVED: if (post.height !== POST_THICKNESS) continue;
+
+        // Need to check collision between circle (ball) and rectangle (post)
+        // Find the closest point on the rectangle to the ball's center
+        const closestX = Math.max(post.x, Math.min(ball.x, post.x + post.width));
+        const closestY = Math.max(post.y, Math.min(ball.y, post.y + post.height));
+
+        // Calculate the distance between ball center and closest point
+        const distX = ball.x - closestX;
+        const distY = ball.y - closestY;
+        const distanceSq = distX*distX + distY*distY;
+
+        // Check if the distance is less than the ball's radius squared (collision)
+        if (distanceSq < ball.radius * ball.radius) {
+             console.log(`Crossbar collision!`); // Keep basic collision log
+            const distance = Math.sqrt(distanceSq);
+            let overlap = ball.radius - distance;
+            if (overlap < 0) overlap = 0; 
+
+            const penetrationX = (overlap * (distX / distance)) || 0;
+            const penetrationY = (overlap * (distY / distance)) || 0;
+
+            console.log(` ClosestX: ${closestX.toFixed(1)}, ClosestY: ${closestY.toFixed(1)}, ` +
+                        `DistX: ${distX.toFixed(1)}, DistY: ${distY.toFixed(1)}, ` +
+                        `Overlap: ${overlap.toFixed(1)}`);
+
+            // Decide response based on penetration vector direction
+            if (Math.abs(distX) > Math.abs(distY)) { // Collision is more horizontal 
+                 console.log(' Side hit');
+                ball.vx = -ball.vx * POST_BOUNCE; 
+                ball.vy *= 0.95; 
+                ball.x += penetrationX + Math.sign(distX) * 0.1; 
+            } else { // Collision is more vertical 
+                if (distY < 0) { // Hit TOP of crossbar 
+                     console.log(' Top hit');
+                    ball.vy = Math.abs(ball.vy * POST_BOUNCE); 
+                    if (ball.vy < 50) ball.vy = 50; 
+                    ball.y += penetrationY - 0.1; // Push out vertically (up) - Keep overlap push for top hits
+                } else { // Hit BOTTOM of crossbar 
+                     console.log(' Bottom hit');
+                    ball.vy = -Math.abs(ball.vy * POST_BOUNCE); 
+                    // Add a stronger base velocity upward
+                    if (Math.abs(ball.vy) < 200) ball.vy = -200; // Increased Minimum
+                    // Set position clearly below
+                    ball.y = post.y + post.height + ball.radius + 0.5; // Direct Placement with larger buffer
+                    // ADD small horizontal nudge away from post center
+                    ball.x += Math.sign(ball.x - (post.x + post.width / 2)) * 1.0;
+                }
+                ball.vx *= 0.95; 
+            }
+        }
+    }
 }
 
 // Keep the dev server running, but comment out loop start for now
@@ -322,6 +509,7 @@ console.log('Game setup complete. Loop not started yet.')
 
 // --- Game Loop --- 
 let lastTime = 0; // Declare lastTime outside the loop
+let frameCount = 0;
 
 function gameLoop(timestamp: number) {
     // Calculate delta time (dt)
@@ -346,16 +534,16 @@ function gameLoop(timestamp: number) {
     ctx!.fillStyle = GRASS_GREEN;
     ctx!.fillRect(0, GROUND_Y, SCREEN_WIDTH, SCREEN_HEIGHT - GROUND_Y);
 
+    // --- Draw Goals (ADDED CALL) ---
+    drawGoals(ctx!); 
+
     // --- Update game state --- 
     player1.update(dt, GROUND_Y, SCREEN_WIDTH);
     player2.update(dt, GROUND_Y, SCREEN_WIDTH);
     ball.update(dt, GROUND_Y, SCREEN_WIDTH);
-
-    // --- Player 2 Debug Logging ---
-    if (pressedKeys.has('ArrowLeft') || pressedKeys.has('ArrowRight')) {
-        console.log(`P2 State: vx=${player2.vx.toFixed(1)}, isKicking=${player2.isKicking}, isTumbling=${player2.isTumbling}, Keys: ${Array.from(pressedKeys).join(', ')}`);
-    }
-    // -----------------------------
+    // handleCollisions();
+    // checkGoal();
+    // updatePowerups();
 
     // --- Handle Collisions ---
     handlePlayerCollisions(player1, player2);

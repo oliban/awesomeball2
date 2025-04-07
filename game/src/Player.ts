@@ -83,7 +83,7 @@ export class Player {
     // Base Size Attributes (adjust values based on reference)
     readonly baseHeadRadius: number = 12;
     readonly baseTorsoLength: number = 36;
-    readonly baseLimbWidth: number = 6;
+    readonly baseLimbWidth: number = 10;
     readonly baseArmLength: number = 24;
     readonly baseLegLength: number = 28;
 
