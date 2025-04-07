@@ -163,7 +163,7 @@ function drawGoals(ctx: CanvasRenderingContext2D) {
     // Left Goal Net
     const leftNetTop = GOAL_Y_POS; // Net starts below crossbar
     const leftNetBottom = GROUND_Y;
-    const leftNetBackX = LEFT_GOAL_X + netDepth; // Back of the net
+    // const leftNetBackX = LEFT_GOAL_X + netDepth; // REMOVE UNUSED Back of the net
     // Slanted vertical lines?
     // Horizontal lines
     for (let y = leftNetTop; y < leftNetBottom; y += netSpacing) {
@@ -183,7 +183,7 @@ function drawGoals(ctx: CanvasRenderingContext2D) {
      // Right Goal Net
     const rightNetTop = GOAL_Y_POS; // Net starts below crossbar
     const rightNetBottom = GROUND_Y;
-    const rightNetBackX = RIGHT_GOAL_X + GOAL_WIDTH - netDepth; // Back of the net
+    // const rightNetBackX = RIGHT_GOAL_X + GOAL_WIDTH - netDepth; // REMOVE UNUSED Back of the net
     // Horizontal lines
     for (let y = rightNetTop; y < rightNetBottom; y += netSpacing) {
         ctx.beginPath();
@@ -383,8 +383,8 @@ function handlePlayerCollisions(p1: Player, p2: Player) {
 // --- Handle Ball Collisions ---
 function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
     // Fine-tune impact window and collision radius
-    const KICK_IMPACT_START_PROGRESS = 0.20; // Slightly earlier check
-    const KICK_IMPACT_END_PROGRESS = 0.50;   // Slightly later check 
+    // const KICK_IMPACT_START_PROGRESS = 0.20; // REMOVE UNUSED
+    // const KICK_IMPACT_END_PROGRESS = 0.50;   // REMOVE UNUSED
     const KICK_FORCE_HORIZONTAL = 600;      // Adjust strength as needed
     const KICK_FORCE_VERTICAL = -450;       // Adjust vertical lift as needed
     const KICK_FOOT_RADIUS = 10;           // Reduced test radius (was 20, orig 5)
@@ -437,13 +437,20 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              const pushX = ball.x - player.x;
              const pushY = ball.y - (player.y - player.legLength * 0.5); // Push from player center-ish Y
              const pushMagnitude = Math.sqrt(pushX * pushX + pushY * pushY);
-             const pushForce = 150; // Adjust force
+             const pushForce = 400; // NEW Increased force
              if (pushMagnitude > 0) {
-                ball.vx += (pushX / pushMagnitude) * pushForce * 0.1; // Less horizontal push
+                ball.vx += (pushX / pushMagnitude) * pushForce * 0.2; // Even less horizontal push relatively
                 ball.vy += (pushY / pushMagnitude) * pushForce;
-                // Dampen player velocity slightly on collision?
-                // player.vx *= 0.95;
              }
+
+             // ADD Positional Correction for Body
+             let bodyOverlap = ball.radius - Math.sqrt(distanceSqBody);
+             if (bodyOverlap < 0) bodyOverlap = 0;
+             const bodyDistance = Math.sqrt(distanceSqBody);
+             const bodyPenetrationX = (bodyOverlap * (distXBody / bodyDistance)) || 0;
+             const bodyPenetrationY = (bodyOverlap * (distYBody / bodyDistance)) || 0;
+             ball.x += bodyPenetrationX + Math.sign(distXBody) * 0.2; // NEW Push out + larger buffer
+             ball.y += bodyPenetrationY + Math.sign(distYBody) * 0.2; // NEW Push out + larger buffer
         }
 
         // Check collision with head (Circle vs Circle)
@@ -456,11 +463,19 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
             console.log("Head collision");
              // Simple bounce: push ball away from head center
              const pushMagnitude = Math.sqrt(distSqHead);
-             const pushForce = 300; // More force for headers
+             const pushForce = 600; // NEW Increased force for headers
              if (pushMagnitude > 0) {
                 ball.vx += (dxHead / pushMagnitude) * pushForce;
                 ball.vy += (dyHead / pushMagnitude) * pushForce * 1.2; // More vertical push for headers
              }
+
+             // ADD Positional Correction for Head
+             let headOverlap = radiiSum - pushMagnitude; // pushMagnitude is distance here
+             if (headOverlap < 0) headOverlap = 0;
+             const headPenetrationX = (headOverlap * (dxHead / pushMagnitude)) || 0;
+             const headPenetrationY = (headOverlap * (dyHead / pushMagnitude)) || 0;
+             ball.x += headPenetrationX + Math.sign(dxHead) * 0.2; // NEW Push out + larger buffer
+             ball.y += headPenetrationY + Math.sign(dyHead) * 0.2; // NEW Push out + larger buffer
         }
     }
 
@@ -539,11 +554,11 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                 if (distY < 0) { // Hit TOP of crossbar 
                      console.log(' Top hit');
                     // Position correction first
-                    ball.y += penetrationY - 0.1; 
-                    // Then apply bounce
-                    ball.vy = Math.abs(ball.vy * POST_BOUNCE); 
-                    // Ensure minimum downward speed
-                    if (ball.vy < 30) ball.vy = 30; // NEW Lower Minimum
+                    ball.y += penetrationY - 0.1; // Push ball up
+                    // Then apply bounce UPWARDS
+                    ball.vy = -Math.abs(ball.vy * POST_BOUNCE); // CORRECT - Bounce UP
+                    // Add extra upward speed if bounce was weak
+                    if (ball.vy > -80) ball.vy -= 80; // Ensure minimum upward speed
                 } else { // Hit BOTTOM of crossbar 
                      console.log(' Bottom hit');
                     // Bounce first
@@ -566,7 +581,6 @@ console.log('Game setup complete. Loop not started yet.')
 
 // --- Game Loop --- 
 let lastTime = 0; // Declare lastTime outside the loop
-let frameCount = 0;
 
 function gameLoop(timestamp: number) {
     // Calculate delta time (dt)

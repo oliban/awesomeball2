@@ -39,9 +39,6 @@ function lerp(start: number, end: number, t: number): number {
 // Simple easing functions
 function easeInQuad(t: number): number { return t * t; }
 function easeOutQuad(t: number): number { return t * (2 - t); }
-function easeInOutQuad(t: number): number { 
-    return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; 
-}
 
 export class Player {
     // Position and Velocity
@@ -484,7 +481,7 @@ export class Player {
         const hipY = this.y - this.legLength;
         const height = this.legLength + this.torsoLength; // Torso + Legs
         // Use limbWidth as a base for width, maybe slightly wider?
-        const width = this.limbWidth * 2; 
+        const width = this.limbWidth * 3; // NEW Wider Hitbox 
         return {
             x: this.x - width / 2, // Centered around player x
             y: hipY - this.torsoLength, // Top of torso (approx neck)
