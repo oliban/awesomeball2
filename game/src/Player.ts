@@ -296,44 +296,39 @@ export class Player {
      * @param screenWidth The width of the game screen
      */
     update(dt: number, groundY: number, screenWidth: number) {
-        // Reset the onOtherPlayerHead flag each frame (will be set by collision detection if needed)
+        // Reset flags
         this.onOtherPlayerHead = false;
         
-        // First, handle kick animation if currently kicking
+        // Apply gravity ALWAYS (if in air and not on crossbar)
+        if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
+            this.vy += this.gravity * dt;
+        }
+
+        // Store if player was in air before position updates
+        const wasInAir = this.isJumping;
+
+        // Update VERTICAL position ALWAYS
+        this.y += this.vy * dt;
+
+        // Update HORIZONTAL position ALWAYS (using existing velocity)
+        this.x += this.vx * dt;
+
+        // Handle kicking OR regular movement/animations
         if (this.isKicking) {
+            // Define kick animation phases here as they are used within this block
+            const windupEnd = 0.2; // First 20% is windup
+            // const impactFrame = 0.4; // Impact around 40% through (Keep commented or define if needed later)
+            const followEnd = 1.0; // Follow through to the end
+
             // Increment kick timer
             const prevKickTimer = this.kickTimer;
             this.kickTimer += dt;
-            
+
             // Monitor progress through kick animation
             const kickProgress = this.kickTimer / this.kickDuration;
-            // console.log(`Kick progress: ${kickProgress.toFixed(2)}`);
-            
-            // Reset kick timer if kick is done
-            if (this.kickTimer >= this.kickDuration) {
-                this.kickTimer = 0;
-                this.isKicking = false;
-                // console.log('Kick animation ended');
-            }
-            
-            // Animate kick based on timeline with distinct phases
-            const windupEnd = 0.2; // First 20% is windup
-            const impactFrame = 0.4; // Impact around 40% through
-            const followEnd = 1.0; // Follow through to the end
-            
-            // Threshold detection for tracking when the kick enters the impact frame
-            const impactThreshold = 0.01; // Small window for accuracy, but avoid single-frame detections
-            // Check if we just entered the impact frame
-            const wasInImpact = (prevKickTimer / this.kickDuration) >= (impactFrame - impactThreshold) && 
-                               (prevKickTimer / this.kickDuration) <= (impactFrame + impactThreshold);
-            const isInImpact = kickProgress >= (impactFrame - impactThreshold) && 
-                               kickProgress <= (impactFrame + impactThreshold);
-            
-            if (!wasInImpact && isInImpact) {
-                // console.log('%cKICK IMPACT FRAME!', 'color: red; font-weight: bold;');
-                // Impact event happened here!
-            }
-            
+
+            // Animate kick based on timeline
+            // ... (rest of the existing kick animation leg angle updates based on kickProgress) ...
             // Windback phase: Player readies leg
             if (kickProgress < windupEnd) {
                 // Scale how far back the leg goes, easing in
@@ -358,23 +353,18 @@ export class Player {
                 // Determine leg position during kick
                 if (this.facingDirection === 1) {
                     // Right Leg kicks when facing right
-                    // Angle transitions from windback (-WINDUP_REL) to extended (FOLLOW_REL)
-                    // Negative windback, positive follow-through
                     this.rightThighAngle = STAND_ANGLE + 
                                           lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
                     
                     // Shin starts bent, extends for impact, then maintains
                     if (phaseProgress < 0.5) {
-                        // First half: transition from windup to impact
                         const shinPhase = phaseProgress / 0.5; // Normalize to 0-1 for shin
                         this.rightShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, shinPhase);
                     } else {
-                        // Second half: keep extended
                         this.rightShinAngle = KICK_SHIN_IMPACT_ANGLE;
                     }
                 } else {
                     // Left Leg kicks when facing left (mirror the right kick)
-                    // For left kick, positive windback, negative follow-through
                     this.leftThighAngle = STAND_ANGLE + 
                                          lerp(KICK_THIGH_WINDUP_REL, -KICK_THIGH_FOLLOW_REL, phaseProgress);
                     
@@ -387,103 +377,74 @@ export class Player {
                     }
                 }
             }
+            // Reset kick timer if kick is done
+             if (this.kickTimer >= this.kickDuration) {
+                 this.kickTimer = 0;
+                 this.isKicking = false;
+             }
         } 
         else {
-            // Not kicking - legs return to neutral 
+            // Not kicking: Handle non-kicking animations
             
-            // Apply gravity if not on ground
-            if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
-                this.vy += this.gravity * dt;
-                // Debug for gravity
-                // console.log(`Applying gravity: vy=${this.vy}, dt=${dt}, gravity=${this.gravity}`);
-            }
-            
-            // Check if player just landed
-            const wasInAir = this.isJumping;
-            
-            // Position & velocity updates
-            this.x += this.vx * dt;
-            this.y += this.vy * dt;
-            
-            // Debug for position update
-            // console.log(`Position updated: y=${this.y}, vy=${this.vy}`);
-            
-            // Handle ground collision
-            const hitGround = this.y >= groundY;
-            if (hitGround) {
-                this.y = groundY; // Snap to ground
-                if (wasInAir) {
-                    // Just landed
-                    this.isJumping = false;
-                    this.vy = 0;
-                    
-                    // Play landing sound if falling fast enough
-                    if (this.vy > 200) {
-                        playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
-                    }
-                }
-            }
-            
-            // Keep player within screen bounds
-            if (this.x < 0) this.x = 0;
-            if (this.x > screenWidth) this.x = screenWidth;
-            
-            // Handle crossbar hanging physics (if applicable)
-            
-            // If player can stand on the crossbar, implement that here
-            // if (this.onCrossbar) { this.vy = 0; this.y = crossbarY; }
-            
-            // Non-jumping leg animation
+            // Non-kicking leg animation
             if (this.isJumping || this.onLeftCrossbar || this.onRightCrossbar) {
-                // Jumping - both arms up, legs in "bent" position
-                // ...legs code...
+                // Jumping animation
+                const targetLeftThigh = STAND_ANGLE + Math.PI * 0.2;
+                const targetRightThigh = STAND_ANGLE - Math.PI * 0.2;
+                const targetShin = -Math.PI * 0.2; 
                 
-                // Calculate target angles for jumping pose
-                const targetLeftThigh = STAND_ANGLE + Math.PI * 0.2;  // Thigh lifted slightly
-                const targetRightThigh = STAND_ANGLE - Math.PI * 0.2; // Thigh lifted slightly
-                const targetShin = -Math.PI * 0.2; // Shin angle relative to thigh (bent forward)
-                
-                // Smoothly animate toward target
                 const legReturnSpeed = RETURN_SPEED * dt;
                 this.leftThighAngle += (targetLeftThigh - this.leftThighAngle) * legReturnSpeed;
                 this.rightThighAngle += (targetRightThigh - this.rightThighAngle) * legReturnSpeed;
                 this.leftShinAngle += (targetShin - this.leftShinAngle) * legReturnSpeed; 
                 this.rightShinAngle += (targetShin - this.rightShinAngle) * legReturnSpeed;
-                
-                // ... arms code ...
-            } else if (hitGround && this.vx !== 0) {
-                // Walking animation - Calculate target angles for walking
+            } else if (this.y >= groundY && this.vx !== 0) { // Check if on ground (use y >= groundY instead of hitGround as hitGround is defined later)
+                // Walking animation
                 this.walkCycleTimer += dt * WALK_CYCLE_SPEED;
-                
-                // Sine wave oscillation for leg swing
                 const legSwing = Math.sin(this.walkCycleTimer * Math.PI * 2) * LEG_THIGH_SWING; 
-                
-                // Apply leg swinging
                 this.leftThighAngle = STAND_ANGLE + legSwing; 
-                this.rightThighAngle = STAND_ANGLE - legSwing; // Opposite of left
-                
-                // Apply natural shin angle based on leg swing
-                this.leftShinAngle = legSwing * -0.5; // Less bend than thigh
+                this.rightThighAngle = STAND_ANGLE - legSwing;
+                this.leftShinAngle = legSwing * -0.5; 
                 this.rightShinAngle = -legSwing * -0.5; 
-                
-                // Arm swings opposite of legs
+                // Arm swings (keep if desired)
                 this.leftArmAngle = STAND_ANGLE - legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
                 this.rightArmAngle = STAND_ANGLE + legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
-                
             } else {
                 // Standing - Return to neutral pose
-                // Legs
                 const standingReturn = RETURN_SPEED * dt;
                 this.leftThighAngle += (STAND_ANGLE - this.leftThighAngle) * standingReturn;
                 this.rightThighAngle += (STAND_ANGLE - this.rightThighAngle) * standingReturn;
                 this.leftShinAngle += (0 - this.leftShinAngle) * standingReturn;
                 this.rightShinAngle += (0 - this.rightShinAngle) * standingReturn;
-                
-                // Arms
+                // Arms (keep if desired)
                 this.leftArmAngle += (STAND_ANGLE - this.leftArmAngle) * standingReturn;
                 this.rightArmAngle += (STAND_ANGLE - this.rightArmAngle) * standingReturn;
             }
         }
+
+        // Keep player within screen bounds horizontally ALWAYS (after position update)
+        if (this.x < 0) this.x = 0;
+        if (this.x > screenWidth) this.x = screenWidth;
+
+        // Handle ground collision ALWAYS (after vertical position update)
+        const hitGround = this.y >= groundY;
+        if (hitGround) {
+            const verticalVelocityBeforeGroundHit = this.vy; // Store vy before potentially resetting it
+            this.y = groundY; // Snap to ground
+            this.vy = 0;      // Stop vertical movement
+
+            if (wasInAir) { // Check if player just landed from a jump/fall
+                this.isJumping = false;
+                // Play landing sound if falling fast enough
+                if (verticalVelocityBeforeGroundHit > 200) { // Use the velocity before hitting ground
+                    playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
+                }
+            }
+        }
+        
+        // Handle crossbar hanging physics (if applicable) - This needs careful placement, maybe after ground check?
+        // If player can stand on the crossbar, implement that here
+        // if (this.onCrossbar) { this.vy = 0; this.y = crossbarY; }
 
         // Update Tumble State
         if (this.isTumbling) {
