@@ -45,6 +45,12 @@ const KICK_SHIN_WINDUP_ANGLE = Math.PI * 0.6; // Bend shin back relative to thig
 const KICK_SHIN_IMPACT_ANGLE = -Math.PI * 0.15; // Extend shin more at impact
 const KICK_DURATION_SECONDS = 0.45; // Faster duration again (was 0.9)
 
+// NEW Shoe/Foot Constants
+const SHOE_LENGTH = 14; // Increased size
+const SHOE_HEIGHT = 8; // Increased size
+const FOOT_HITBOX_RADIUS = 9; // Adjusted slightly for bigger shoe
+const SHOE_STAND_ANGLE_OFFSET = Math.PI / 12; // Unused now, but keep for reference?
+
 // Animation speed for returning limbs to neutral
 const RETURN_SPEED = 25.0; // Increased from 15.0 for faster snapping
 
@@ -236,6 +242,10 @@ export class Player {
         const rightFootPos = calculateEndPoint(rightKneePos, shinLength, this.rightThighAngle + this.rightShinAngle);
         // We expect footPos.y to be roughly this.y, adjust calculation or base point if needed
 
+        // Determine player state for drawing adjustments
+        const isOnSurface = (this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar);
+        const isStandingStill = isOnSurface && this.vx === 0;
+
         // --- Draw Components --- 
         ctx.lineWidth = this.limbWidth;
         ctx.lineCap = 'round';
@@ -282,19 +292,42 @@ export class Player {
         ctx.lineTo(rightHandPos.x, rightHandPos.y);
         ctx.stroke();
 
-        // 5. Legs (Hip -> Knee -> Foot)
+        // 5. Legs (Hip -> Knee -> Foot/Ankle)
         ctx.strokeStyle = this.teamColor;
+        // Left Leg
         ctx.beginPath();
         ctx.moveTo(hipPos.x, hipPos.y);
         ctx.lineTo(leftKneePos.x, leftKneePos.y);
         ctx.lineTo(leftFootPos.x, leftFootPos.y);
         ctx.stroke();
-
+        // Right Leg
         ctx.beginPath();
         ctx.moveTo(hipPos.x, hipPos.y);
         ctx.lineTo(rightKneePos.x, rightKneePos.y);
         ctx.lineTo(rightFootPos.x, rightFootPos.y);
         ctx.stroke();
+
+        // 6. Shoes (Draw AFTER legs)
+        ctx.fillStyle = this.teamAccent; // Use accent color for shoes
+        // Function to draw a rotated rectangle (shoe)
+        const drawShoe = (footPos: Point, shinAngle: number, isLeftShoe: boolean, standStill: boolean, facingDir: 1 | -1) => {
+            let finalShoeAngle = shinAngle;
+            if (standStill) {
+                // If standing still, point shoe in player's facing direction (horizontal)
+                finalShoeAngle = (facingDir === 1) ? 0 : Math.PI; // 0 for right, PI for left
+            }
+            ctx.save();
+            ctx.translate(footPos.x, footPos.y);
+            ctx.rotate(finalShoeAngle); // Use potentially adjusted angle
+            // Draw rectangle centered vertically at the ankle, extending forward from the ankle point
+            // No offset needed; the rotation handles the direction.
+            ctx.fillRect(0, -SHOE_HEIGHT / 2, SHOE_LENGTH, SHOE_HEIGHT);
+            ctx.restore();
+        };
+
+        // Pass state and facing direction to drawShoe
+        drawShoe(leftFootPos, this.leftThighAngle + this.leftShinAngle, true, isStandingStill, this.facingDirection);
+        drawShoe(rightFootPos, this.rightThighAngle + this.rightShinAngle, false, isStandingStill, this.facingDirection);
 
         ctx.restore(); // Restore context state
     }
@@ -672,5 +705,33 @@ export class Player {
         }
         
         return footPos; // Return the calculated impact foot position
+    }
+
+    /**
+     * Calculates the position and radius of the foot hitboxes.
+     * Returns an array containing two hitbox objects { x, y, radius }.
+     */
+    getFootHitboxes(): { x: number, y: number, radius: number }[] {
+        const hitboxes: { x: number, y: number, radius: number }[] = [];
+        const hipPos: Point = { x: this.x, y: this.y - this.legLength };
+        const thighLength = this.legLength * 0.5;
+        const shinLength = this.legLength * 0.5;
+        const footOffset = SHOE_LENGTH * 0.5; // Center hitbox slightly ahead of ankle
+
+        // Left Foot
+        const leftKneePos = calculateEndPoint(hipPos, thighLength, this.leftThighAngle);
+        const leftAnklePos = calculateEndPoint(leftKneePos, shinLength, this.leftThighAngle + this.leftShinAngle);
+        const leftShinAngle = this.leftThighAngle + this.leftShinAngle;
+        const leftFootHitboxCenter = calculateEndPoint(leftAnklePos, footOffset, leftShinAngle);
+        hitboxes.push({ x: leftFootHitboxCenter.x, y: leftFootHitboxCenter.y, radius: FOOT_HITBOX_RADIUS });
+
+        // Right Foot
+        const rightKneePos = calculateEndPoint(hipPos, thighLength, this.rightThighAngle);
+        const rightAnklePos = calculateEndPoint(rightKneePos, shinLength, this.rightThighAngle + this.rightShinAngle);
+        const rightShinAngle = this.rightThighAngle + this.rightShinAngle;
+        const rightFootHitboxCenter = calculateEndPoint(rightAnklePos, footOffset, rightShinAngle);
+        hitboxes.push({ x: rightFootHitboxCenter.x, y: rightFootHitboxCenter.y, radius: FOOT_HITBOX_RADIUS });
+
+        return hitboxes;
     }
 } 

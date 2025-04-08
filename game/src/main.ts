@@ -845,16 +845,17 @@ function handlePlayerCollisions(p1: Player, p2: Player) {
 }
 
 // --- Handle Ball Collisions ---
-function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
-    // Fine-tune impact window and collision radius
-    // const KICK_IMPACT_START_PROGRESS = 0.20; // REMOVE UNUSED
-    // const KICK_IMPACT_END_PROGRESS = 0.50;   // REMOVE UNUSED
-    // const KICK_FORCE_HORIZONTAL = 600;      // Moved up
-    // const KICK_FORCE_VERTICAL = -450;       // Moved up
+const NEAR_BALL_THRESHOLD_SQ = 2209; // (Player Head Radius + Ball Radius + Margin)^2 roughly (12+15+20)^2
+const NEAR_BALL_SPEED_MULTIPLIER = 0.7; // 70% speed when near ball (changed from 0.8)
 
-    // --- Player Kick Collision Checks ---
+// Dribble constants
+const DRIBBLE_FORCE = 150; // Much smaller force for foot touches
+
+function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
     const players = [p1, p2];
+
     for (const player of players) {
+        // --- Kick Collision Logic --- (Existing)
         if (player.isKicking) {
             const kickPoint = player.getKickImpactPoint(); // Assumes this exists and returns {x, y}
             if (!kickPoint) continue; // Skip if player class doesn't provide point
@@ -903,6 +904,46 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
 
                 // Prevent multiple hits per kick / prioritize kick over body/head
                 continue; // Skip body/head checks for this player if kick connected
+            }
+        }
+
+        // --- NEW: Foot Hitbox Collision (Dribbling) ---
+        // Check only if NOT actively kicking (kick takes precedence)
+        if (!player.isKicking) {
+            const footHitboxes = player.getFootHitboxes();
+            for (const foot of footHitboxes) {
+                const dxFoot = ball.x - foot.x;
+                const dyFoot = ball.y - foot.y;
+                const distSqFoot = dxFoot * dxFoot + dyFoot * dyFoot;
+                const radiiSumSqFoot = (ball.radius + foot.radius) * (ball.radius + foot.radius);
+
+                if (distSqFoot < radiiSumSqFoot) {
+                    console.log("Foot collision (dribble)");
+                    // Apply a small nudge away from the foot
+                    const pushMagnitude = Math.sqrt(distSqFoot);
+                    let pushVX = 0;
+                    let pushVY = 0;
+                    if (pushMagnitude > 0) {
+                        pushVX = (dxFoot / pushMagnitude) * DRIBBLE_FORCE;
+                        // Slightly bias the dribble push upwards and forwards
+                        pushVY = (dyFoot / pushMagnitude) * DRIBBLE_FORCE * 0.5 - DRIBBLE_FORCE * 0.5;
+                    }
+                    ball.vx += pushVX;
+                    ball.vy += pushVY;
+
+                    // Apply positional correction
+                    let overlap = (ball.radius + foot.radius) - pushMagnitude;
+                    if (overlap < 0) overlap = 0;
+                    const correctionX = (overlap * (dxFoot / pushMagnitude)) || 0;
+                    const correctionY = (overlap * (dyFoot / pushMagnitude)) || 0;
+                    ball.x += correctionX + Math.sign(dxFoot) * 0.1;
+                    ball.y += correctionY + Math.sign(dyFoot) * 0.1;
+                    
+                    // Optionally play a very soft dribble sound here?
+                    // playSound(dribbleSoundUrls); 
+
+                    continue; // Skip body/head checks if foot connected
+                }
             }
         }
 
