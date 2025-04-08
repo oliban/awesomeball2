@@ -296,6 +296,9 @@ export class Player {
      * @param screenWidth The width of the game screen
      */
     update(dt: number, groundY: number, screenWidth: number) {
+        // Reset the onOtherPlayerHead flag each frame (will be set by collision detection if needed)
+        this.onOtherPlayerHead = false;
+        
         // First, handle kick animation if currently kicking
         if (this.isKicking) {
             // Increment kick timer
@@ -388,23 +391,25 @@ export class Player {
         else {
             // Not kicking - legs return to neutral 
             
-            // Check if player has just started jumping
-            // This check was moved to jump method for sound playing
-            
             // Apply gravity if not on ground
             if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
                 this.vy += this.gravity * dt;
+                // Debug for gravity
+                // console.log(`Applying gravity: vy=${this.vy}, dt=${dt}, gravity=${this.gravity}`);
             }
             
             // Check if player just landed
             const wasInAir = this.isJumping;
-            const hitGround = this.y >= groundY;
             
             // Position & velocity updates
             this.x += this.vx * dt;
             this.y += this.vy * dt;
             
+            // Debug for position update
+            // console.log(`Position updated: y=${this.y}, vy=${this.vy}`);
+            
             // Handle ground collision
+            const hitGround = this.y >= groundY;
             if (hitGround) {
                 this.y = groundY; // Snap to ground
                 if (wasInAir) {
@@ -517,7 +522,11 @@ export class Player {
             this.minKickDistSq = Infinity;
             this.kickImpactForceX = 0;
             this.kickImpactForceY = 0;
-            // TODO: Play kick sound
+            
+            // Play kick sound
+            if (globalPlaySound) {
+                playSound(["sounds/kick_ball1.mp3", "sounds/kick_ball2.mp3", "sounds/kick_ball3.mp3"]);
+            }
         }
     }
 
@@ -527,15 +536,23 @@ export class Player {
     jump() {
         // Allow jump if on the ground OR on the other player's head
         if (!this.isJumping || this.onOtherPlayerHead) {
+            // Applicera jumpPower (negativ för uppåt rörelse)
             this.vy = this.jumpPower;
             this.isJumping = true;
             this.onOtherPlayerHead = false; // No longer on head once jumped
             
-            // Play jump sound
+            // Debug logging
+            console.log(`Player jump: vy=${this.vy}, jumpPower=${this.jumpPower}`);
+            
+            // Play jump sound (only play if we actually jumped)
             if (globalPlaySound) {
                 playSound(["sounds/jump1.mp3"]);
             }
+            
+            return true; // Jump was performed
         }
+        
+        return false; // Jump was not performed
     }
 
     // applyGravity(dt: number) { ... } // Incorporated into update

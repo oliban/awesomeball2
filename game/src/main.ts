@@ -49,6 +49,27 @@ let player2Score = 0;
 const audioContext = new AudioContext();
 const soundBuffers = new Map<string, AudioBuffer>(); // To store loaded sounds
 
+// Master volume control (0-1 range)
+let masterVolume = 0.7;
+// Create a master gain node for volume control
+const masterGainNode = audioContext.createGain();
+masterGainNode.gain.value = masterVolume;
+masterGainNode.connect(audioContext.destination);
+
+// Background music
+let bgMusic: AudioBufferSourceNode | null = null;
+let bgMusicBuffer: AudioBuffer | null = null;
+let bgMusicGain: GainNode | null = null;
+const bgMusicVolume = 0.4; // Default background music volume (lower than sound effects)
+let isMusicPlaying = false;
+
+// Audio effect settings
+const REVERB_ENABLED = true;
+const ECHO_ENABLED = true;
+const REVERB_LEVEL = 0.2; // Amount of reverb (0-1)
+const ECHO_DELAY = 0.3; // Echo delay in seconds
+const ECHO_FEEDBACK = 0.3; // Echo feedback amount (0-1)
+
 // URLs for the sounds - Using actual sound files
 const kickSoundUrls = [
     'sounds/kick_ball1.mp3',
@@ -95,6 +116,11 @@ const countdownSoundUrls = [
     'sounds/0.mp3'
 ];
 
+// Background music
+const backgroundMusicUrls = [
+    'sounds/sample.ogg' // Using the sample OGG file we have
+];
+
 // Function to load a sound file into an AudioBuffer
 async function loadSoundBuffer(url: string): Promise<AudioBuffer | null> {
     console.log(`Requesting buffer for: ${url}`);
@@ -113,13 +139,110 @@ async function loadSoundBuffer(url: string): Promise<AudioBuffer | null> {
     }
 }
 
-// Function to play a loaded AudioBuffer
-function playSoundBuffer(buffer: AudioBuffer) {
+// Create a reverb effect
+async function createReverb(): Promise<ConvolverNode | null> {
+    try {
+        // Create a convolver node
+        const convolver = audioContext.createConvolver();
+        
+        // Generate an impulse response (simplified version)
+        const sampleRate = audioContext.sampleRate;
+        const length = sampleRate * 2; // 2 seconds
+        const impulseResponse = audioContext.createBuffer(2, length, sampleRate);
+        
+        // Fill both channels with decreasing random values to simulate a simple reverb
+        for (let channel = 0; channel < 2; channel++) {
+            const channelData = impulseResponse.getChannelData(channel);
+            for (let i = 0; i < length; i++) {
+                // Exponential decay
+                const decay = Math.exp(-i / (sampleRate * 0.5));
+                channelData[i] = (Math.random() * 2 - 1) * decay;
+            }
+        }
+        
+        convolver.buffer = impulseResponse;
+        return convolver;
+    } catch (error) {
+        console.error("Error creating reverb:", error);
+        return null;
+    }
+}
+
+// Create a delay effect (echo)
+function createEcho(): DelayNode {
+    const delay = audioContext.createDelay();
+    delay.delayTime.value = ECHO_DELAY;
+    
+    // Create a feedback loop
+    const feedback = audioContext.createGain();
+    feedback.gain.value = ECHO_FEEDBACK;
+    
+    // Connect delay -> feedback -> delay to create feedback loop
+    delay.connect(feedback);
+    feedback.connect(delay);
+    
+    return delay;
+}
+
+// Create audio effects chain
+let reverbNode: ConvolverNode | null = null;
+let echoNode: DelayNode | null = null;
+
+async function setupAudioEffects() {
+    try {
+        if (REVERB_ENABLED) {
+            reverbNode = await createReverb();
+            if (reverbNode) {
+                const reverbGain = audioContext.createGain();
+                reverbGain.gain.value = REVERB_LEVEL;
+                reverbNode.connect(reverbGain);
+                reverbGain.connect(masterGainNode);
+            }
+        }
+        
+        if (ECHO_ENABLED) {
+            echoNode = createEcho();
+            const echoGain = audioContext.createGain();
+            echoGain.gain.value = 0.3; // Echo level
+            echoNode.connect(echoGain);
+            echoGain.connect(masterGainNode);
+        }
+    } catch (error) {
+        console.error("Error setting up audio effects:", error);
+    }
+}
+
+// Call setup when AudioContext is ready
+setupAudioEffects();
+
+// Function to play a loaded AudioBuffer with effects
+function playSoundBuffer(buffer: AudioBuffer, isImportantSound: boolean = false) {
     if (!buffer) return;
     try {
         const source = audioContext.createBufferSource();
         source.buffer = buffer;
-        source.connect(audioContext.destination);
+        
+        // Create a gain node for this sound
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = isImportantSound ? 1.0 : 0.8; // Important sounds play louder
+        
+        // Connect source to gain node
+        source.connect(gainNode);
+        
+        // Connect to effects if enabled and appropriate for this sound
+        if (echoNode && isImportantSound) {
+            // Only important sounds get echo effect
+            gainNode.connect(echoNode);
+        }
+        
+        if (reverbNode) {
+            // All sounds get some reverb
+            gainNode.connect(reverbNode);
+        }
+        
+        // Always connect to master output
+        gainNode.connect(masterGainNode);
+        
         source.start(0); // Play immediately
         console.log("Started playback via Web Audio API");
     } catch (error) {
@@ -128,7 +251,7 @@ function playSoundBuffer(buffer: AudioBuffer) {
 }
 
 // Play a random sound from a sound URL array
-function playSound(soundUrlArray: string[]) { 
+function playSound(soundUrlArray: string[], isImportantSound: boolean = false) { 
     if (!soundUrlArray || soundUrlArray.length === 0) {
         console.error("Attempted to play sound from an empty URL array.");
         return;
@@ -141,14 +264,44 @@ function playSound(soundUrlArray: string[]) {
     const buffer = soundBuffers.get(urlToPlay); // Get preloaded buffer
 
     if (buffer) {
-        playSoundBuffer(buffer);
+        playSoundBuffer(buffer, isImportantSound);
     } else {
         console.warn(`Sound buffer not found or not loaded yet for ${urlToPlay}. Attempting direct load & play.`);
         // Fallback: Try loading and playing on the fly 
         loadSoundBuffer(urlToPlay).then(directBuffer => {
-            if(directBuffer) playSoundBuffer(directBuffer);
+            if(directBuffer) playSoundBuffer(directBuffer, isImportantSound);
         });
     }
+}
+
+// Function to start background music
+function startBackgroundMusic() {
+    // Disabled as per user request
+    console.log("Background music disabled by user request");
+    return;
+}
+
+// Function to stop background music
+function stopBackgroundMusic() {
+    if (!isMusicPlaying || !bgMusic) return;
+    
+    try {
+        bgMusic.stop();
+        isMusicPlaying = false;
+        console.log("Background music stopped");
+    } catch (error) {
+        console.error("Error stopping background music:", error);
+    }
+}
+
+// Function to set master volume (0-1 range)
+function setMasterVolume(volume: number) {
+    if (volume < 0) volume = 0;
+    if (volume > 1) volume = 1;
+    
+    masterVolume = volume;
+    masterGainNode.gain.value = masterVolume;
+    console.log(`Master volume set to ${volume.toFixed(2)}`);
 }
 
 // --- Preload all sounds using Web Audio API ---
@@ -165,6 +318,7 @@ async function preloadSounds() {
         player1GoalSoundUrls,
         player2GoalSoundUrls,
         countdownSoundUrls
+        // Removed background music from preloading
     ];
     
     const allUrls: string[] = [];
@@ -177,6 +331,8 @@ async function preloadSounds() {
         }
     }
     console.log("Web Audio sound preloading finished.");
+    
+    // Don't start background music
 }
 
 // --- Game Setup ---
@@ -232,25 +388,63 @@ preloadSounds();
 window.addEventListener('DOMContentLoaded', () => {
     console.log("DOMContentLoaded event fired. Setting up sound buttons..."); 
     
+    // Create container for sound controls
+    const soundControlPanel = document.createElement('div');
+    soundControlPanel.style.position = 'absolute';
+    soundControlPanel.style.top = '10px';
+    soundControlPanel.style.right = '10px';
+    soundControlPanel.style.padding = '10px';
+    soundControlPanel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    soundControlPanel.style.borderRadius = '5px';
+    soundControlPanel.style.color = 'white';
+    soundControlPanel.style.zIndex = '1000';
+    document.body.appendChild(soundControlPanel);
+    
+    // Add volume control
+    const volumeControl = document.createElement('div');
+    volumeControl.style.marginBottom = '10px';
+    
+    const volumeLabel = document.createElement('label');
+    volumeLabel.textContent = 'Volume: ';
+    volumeLabel.style.display = 'block';
+    volumeControl.appendChild(volumeLabel);
+    
+    const volumeSlider = document.createElement('input');
+    volumeSlider.type = 'range';
+    volumeSlider.min = '0';
+    volumeSlider.max = '1';
+    volumeSlider.step = '0.01';
+    volumeSlider.value = masterVolume.toString();
+    volumeSlider.style.width = '100%';
+    volumeControl.appendChild(volumeSlider);
+    
+    volumeSlider.addEventListener('input', () => {
+        setMasterVolume(parseFloat(volumeSlider.value));
+    });
+    
+    soundControlPanel.appendChild(volumeControl);
+    
     // Test all different sound categories
-    const setupSoundButton = (id: string, soundArray: string[], label: string) => {
+    const setupSoundButton = (id: string, soundArray: string[], label: string, isImportant: boolean = false) => {
         const button = document.createElement('button');
         button.id = id;
         button.textContent = label;
         button.style.margin = '5px';
+        button.style.padding = '5px';
         button.addEventListener('click', () => {
             console.log(`Playing ${label} sound...`);
-            playSound(soundArray);
+            playSound(soundArray, isImportant);
         });
-        document.body.appendChild(button);
+        soundControlPanel.appendChild(button);
     };
     
     // Create buttons for testing different sound categories
     setupSoundButton('kickSoundButton', kickSoundUrls, 'Kick');
     setupSoundButton('hitSoundButton', hitSoundUrls, 'Hit');
     setupSoundButton('bounceSoundButton', ballBounceSoundUrls, 'Bounce');
-    setupSoundButton('goalP1Button', player1GoalSoundUrls, 'Goal P1');
-    setupSoundButton('goalP2Button', player2GoalSoundUrls, 'Goal P2');
+    setupSoundButton('jumpSoundButton', jumpSoundUrls, 'Jump');
+    setupSoundButton('goalP1Button', player1GoalSoundUrls, 'Goal P1', true);
+    setupSoundButton('goalP2Button', player2GoalSoundUrls, 'Goal P2', true);
 });
 
 const keysPressed: { [key: string]: boolean } = {};
@@ -262,12 +456,16 @@ const pressedKeys = new Set<string>();
 document.addEventListener('keydown', (event) => {
     pressedKeys.add(event.key);
 
-    // Handle jumps on key press
+    // Handle jumps on key press - only call jump if player is on ground or on other player's head
     if (event.key === 'w') {
-        player1.jump();
+        if (!player1.isJumping || player1.onOtherPlayerHead) {
+            player1.jump();
+        }
     }
     if (event.key === 'ArrowUp') {
-        player2.jump();
+        if (!player2.isJumping || player2.onOtherPlayerHead) {
+            player2.jump();
+        }
     }
 
     // Handle kick input
@@ -609,7 +807,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                 ball.applyKick(finalKickVX, finalKickVY); // NEW Call with momentum
 
                 // --- Play Kick Sound (Random) ---
-                playSound(kickSoundUrls);
+                playSound(kickSoundUrls, true);
 
                 // Prevent multiple hits per kick / prioritize kick over body/head
                 continue; // Skip body/head checks for this player if kick connected
@@ -650,7 +848,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              ball.y += bodyPenetrationY + Math.sign(distYBody) * 0.2; // NEW Push out + larger buffer
 
              // --- Play Hit Sound (Random) ---
-             playSound(hitSoundUrls);
+             playSound(hitSoundUrls, true);
         }
 
         // Check collision with head (Circle vs Circle)
@@ -678,7 +876,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              ball.y += headPenetrationY + Math.sign(dyHead) * 0.2; // NEW Push out + larger buffer
 
              // --- Play Hit Sound (Random) ---
-             playSound(hitSoundUrls);
+             playSound(hitSoundUrls, true);
         }
     }
 
@@ -703,11 +901,11 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
             if (pole.x < SCREEN_WIDTH / 2) { // Left pole hit
                 player2Score++;
                 console.log(`%cGOAL for Player 2! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: green; font-weight: bold;');
-                playSound(player2GoalSoundUrls);
+                playSound(player2GoalSoundUrls, true);
             } else { // Right pole hit
                 player1Score++;
                 console.log(`%cGOAL for Player 1! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: blue; font-weight: bold;');
-                playSound(player1GoalSoundUrls);
+                playSound(player1GoalSoundUrls, true);
             }
             resetPositions(ball, p1, p2); // NEW Call
             return; // Exit collision handling for this frame
@@ -755,7 +953,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                 ball.vx = -ball.vx * POST_BOUNCE; 
                 ball.vy *= 0.95; 
                 ball.x += penetrationX + Math.sign(distX) * 0.1; 
-                playSound(crossbarHitSoundUrls);
+                playSound(crossbarHitSoundUrls, true);
             } else { // Collision is more vertical 
                 if (distY < 0) { // Hit TOP of crossbar 
                      console.log(' Top hit');
@@ -765,7 +963,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                     ball.vy = -Math.abs(ball.vy * POST_BOUNCE); // CORRECT - Bounce UP
                     // Add extra upward speed if bounce was weak
                     if (ball.vy > -80) ball.vy -= 80; // Ensure minimum upward speed
-                    playSound(crossbarHitSoundUrls);
+                    playSound(crossbarHitSoundUrls, true);
                 } else { // Hit BOTTOM of crossbar 
                      console.log(' Bottom hit');
                     // Bounce first
@@ -776,7 +974,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                     ball.y = post.y + post.height + ball.radius + 0.5; // Direct Placement with larger buffer
                     // ADD small horizontal nudge away from post center
                     ball.x += Math.sign(ball.x - (post.x + post.width / 2)) * 1.0;
-                    playSound(crossbarHitSoundUrls);
+                    playSound(crossbarHitSoundUrls, true);
                 }
                 ball.vx *= 0.95; 
             }
@@ -785,12 +983,12 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
 
     // Add ground bounce sound for the ball
     if (ball.y + ball.radius >= GROUND_Y && ball.vy > 200) {
-        playSound(ballBounceSoundUrls);
+        playSound(ballBounceSoundUrls, true);
     }
     
     // Add wall bounce sound
     if ((ball.x - ball.radius <= 0 || ball.x + ball.radius >= SCREEN_WIDTH) && Math.abs(ball.vx) > 200) {
-        playSound(wallHitSoundUrls);
+        playSound(wallHitSoundUrls, true);
     }
 }
 
