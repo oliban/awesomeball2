@@ -1,5 +1,5 @@
 import './style.css'
-import { Player } from './Player'
+import { Player, setPlayerSoundFunction } from './Player'
 import { Ball } from './Ball'
 
 // --- Constants (Based on reference/awesome-ball/main.py) ---
@@ -18,6 +18,20 @@ const P2_COLOR_ACCENT = '#CE2B37' // Italy Red
 const SKY_BLUE = '#87CEEB'
 const GRASS_GREEN = '#228B22'
 
+// Ball specific constants
+const BALL_RADIUS = 15;
+const BALL_FRICTION = 0.99; // Air friction
+const BALL_GROUND_FRICTION = 0.95; // Ground friction
+// const BALL_BOUNCE = 0.7; // OLD Bounce coefficient (0-1)
+const BALL_BOUNCE = 0.93; // NEW Even Bouncier!
+
+// Kick specific constants
+const KICK_FOOT_RADIUS = 5;       // Size of the 'foot' hitbox for kicking
+const KICK_FORWARD_BUFFER = 45;   // NEW Drastically increased extra reach
+const KICK_FORCE_HORIZONTAL = 600; // Adjust strength as needed
+const KICK_FORCE_VERTICAL = -450;  // Adjust vertical lift as needed
+const KICK_MOMENTUM_TRANSFER = 0.3; // Factor of ball's velocity added to kick
+
 // Goal Constants (RE-ADDED)
 const POST_THICKNESS = 8;      // Thickness of the crossbar & back pole
 const GOAL_HEIGHT = 150;     // Height of the net area below crossbar / height of back pole
@@ -30,6 +44,140 @@ const POST_BOUNCE = 0.8;     // NEW - Bouncier!
 // --- Score Keeping (RE-ADDED) ---
 let player1Score = 0;
 let player2Score = 0;
+
+// --- Sound Effects --- (Using Web Audio API)
+const audioContext = new AudioContext();
+const soundBuffers = new Map<string, AudioBuffer>(); // To store loaded sounds
+
+// URLs for the sounds - Using actual sound files
+const kickSoundUrls = [
+    'sounds/kick_ball1.mp3',
+    'sounds/kick_ball2.mp3',
+    'sounds/kick_ball3.mp3'
+];
+const hitSoundUrls = [
+    'sounds/body_hit1.mp3',
+    'sounds/headbutt1.mp3',
+    'sounds/player_bump1.mp3'
+];
+const wallHitSoundUrls = [
+    'sounds/wall_hit1.mp3'
+];
+const ballBounceSoundUrls = [
+    'sounds/ball_bounce1.mp3'
+];
+const crossbarHitSoundUrls = [
+    'sounds/crossbar_hit.mp3'
+];
+const landSoundUrls = [
+    'sounds/land1.mp3',
+    'sounds/land2.mp3'
+];
+const jumpSoundUrls = [
+    'sounds/jump1.mp3'
+];
+const player1GoalSoundUrls = [
+    'sounds/player1_goal1.mp3',
+    'sounds/player1_goal2.mp3',
+    'sounds/player1_goal3.mp3'
+];
+const player2GoalSoundUrls = [
+    'sounds/player2_goal1.mp3',
+    'sounds/player2_goal2.mp3',
+    'sounds/player2_goal3.mp3'
+];
+const countdownSoundUrls = [
+    'sounds/5.mp3',
+    'sounds/4.mp3',
+    'sounds/3.mp3',
+    'sounds/2.mp3',
+    'sounds/1.mp3',
+    'sounds/0.mp3'
+];
+
+// Function to load a sound file into an AudioBuffer
+async function loadSoundBuffer(url: string): Promise<AudioBuffer | null> {
+    console.log(`Requesting buffer for: ${url}`);
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status} for ${url}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        console.log(`Successfully decoded buffer for: ${url}`);
+        return audioBuffer;
+    } catch (error) {
+        console.error(`Error loading or decoding sound ${url}:`, error);
+        return null;
+    }
+}
+
+// Function to play a loaded AudioBuffer
+function playSoundBuffer(buffer: AudioBuffer) {
+    if (!buffer) return;
+    try {
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.start(0); // Play immediately
+        console.log("Started playback via Web Audio API");
+    } catch (error) {
+        console.error("Error playing sound buffer:", error);
+    }
+}
+
+// Play a random sound from a sound URL array
+function playSound(soundUrlArray: string[]) { 
+    if (!soundUrlArray || soundUrlArray.length === 0) {
+        console.error("Attempted to play sound from an empty URL array.");
+        return;
+    }
+    // Select a random sound URL from the array
+    const randomIndex = Math.floor(Math.random() * soundUrlArray.length);
+    const urlToPlay = soundUrlArray[randomIndex];
+    
+    console.log(`Attempting to play sound URL: ${urlToPlay}`); 
+    const buffer = soundBuffers.get(urlToPlay); // Get preloaded buffer
+
+    if (buffer) {
+        playSoundBuffer(buffer);
+    } else {
+        console.warn(`Sound buffer not found or not loaded yet for ${urlToPlay}. Attempting direct load & play.`);
+        // Fallback: Try loading and playing on the fly 
+        loadSoundBuffer(urlToPlay).then(directBuffer => {
+            if(directBuffer) playSoundBuffer(directBuffer);
+        });
+    }
+}
+
+// --- Preload all sounds using Web Audio API ---
+async function preloadSounds() {
+    console.log("Starting Web Audio sound preloading...");
+    const allSoundArrays = [
+        kickSoundUrls, 
+        hitSoundUrls, 
+        wallHitSoundUrls, 
+        ballBounceSoundUrls, 
+        crossbarHitSoundUrls,
+        landSoundUrls,
+        jumpSoundUrls,
+        player1GoalSoundUrls,
+        player2GoalSoundUrls,
+        countdownSoundUrls
+    ];
+    
+    const allUrls: string[] = [];
+    allSoundArrays.forEach(array => allUrls.push(...array));
+    
+    for (const url of allUrls) {
+        const buffer = await loadSoundBuffer(url);
+        if (buffer) {
+            soundBuffers.set(url, buffer); // Store the loaded buffer
+        }
+    }
+    console.log("Web Audio sound preloading finished.");
+}
 
 // --- Game Setup ---
 const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement
@@ -68,11 +216,44 @@ const player2 = new Player(
 const ball = new Ball(
     SCREEN_WIDTH / 2, // Start in center
     GROUND_Y - 100, // Start above ground
-    GRAVITY // Use same gravity
+    GRAVITY // Only pass gravity
 )
 
 console.log('Player 1:', player1)
 console.log('Player 2:', player2)
+
+// Register the sound function with the Player class
+setPlayerSoundFunction(playSound);
+
+// --- Start Sound Preloading --- (Call the async function)
+preloadSounds();
+
+// --- Sound Test Button Setup (Wait for DOM) ---
+window.addEventListener('DOMContentLoaded', () => {
+    console.log("DOMContentLoaded event fired. Setting up sound buttons..."); 
+    
+    // Test all different sound categories
+    const setupSoundButton = (id: string, soundArray: string[], label: string) => {
+        const button = document.createElement('button');
+        button.id = id;
+        button.textContent = label;
+        button.style.margin = '5px';
+        button.addEventListener('click', () => {
+            console.log(`Playing ${label} sound...`);
+            playSound(soundArray);
+        });
+        document.body.appendChild(button);
+    };
+    
+    // Create buttons for testing different sound categories
+    setupSoundButton('kickSoundButton', kickSoundUrls, 'Kick');
+    setupSoundButton('hitSoundButton', hitSoundUrls, 'Hit');
+    setupSoundButton('bounceSoundButton', ballBounceSoundUrls, 'Bounce');
+    setupSoundButton('goalP1Button', player1GoalSoundUrls, 'Goal P1');
+    setupSoundButton('goalP2Button', player2GoalSoundUrls, 'Goal P2');
+});
+
+const keysPressed: { [key: string]: boolean } = {};
 
 // --- Input Handling ---
 const pressedKeys = new Set<string>();
@@ -158,7 +339,7 @@ function drawGoals(ctx: CanvasRenderingContext2D) {
     // Optional: Draw a simple net pattern (behind posts)
     ctx.strokeStyle = 'rgba(200, 200, 200, 0.8)'; // MORE VISIBLE NET
     const netSpacing = 10;
-    const netDepth = 30; // How deep the net appears visually
+    // const netDepth = 30; // REMOVE UNUSED - How deep the net appears visually
 
     // Left Goal Net
     const leftNetTop = GOAL_Y_POS; // Net starts below crossbar
@@ -385,42 +566,58 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
     // Fine-tune impact window and collision radius
     // const KICK_IMPACT_START_PROGRESS = 0.20; // REMOVE UNUSED
     // const KICK_IMPACT_END_PROGRESS = 0.50;   // REMOVE UNUSED
-    const KICK_FORCE_HORIZONTAL = 600;      // Adjust strength as needed
-    const KICK_FORCE_VERTICAL = -450;       // Adjust vertical lift as needed
-    const KICK_FOOT_RADIUS = 10;           // Reduced test radius (was 20, orig 5)
+    // const KICK_FORCE_HORIZONTAL = 600;      // Moved up
+    // const KICK_FORCE_VERTICAL = -450;       // Moved up
 
+    // --- Player Kick Collision Checks ---
     const players = [p1, p2];
-
     for (const player of players) {
         if (player.isKicking) {
-            const progress = player.kickTimer / player.kickDuration;
-            const isKickingRightLeg = player.facingDirection === 1;
-            const footPos = player.getFootPosition(isKickingRightLeg);
-            const dx = ball.x - footPos.x;
-            const dy = ball.y - footPos.y;
-            const distanceSq = dx * dx + dy * dy;
-            const collisionDistance = ball.radius + KICK_FOOT_RADIUS;
+            const kickPoint = player.getKickImpactPoint(); // Assumes this exists and returns {x, y}
+            if (!kickPoint) continue; // Skip if player class doesn't provide point
+
+            const dx = ball.x - kickPoint.x;
+            const dy = ball.y - kickPoint.y;
+            const distSq = dx*dx + dy*dy;
+            
+            // Increase collision distance check
+            // const collisionDistance = ball.radius + KICK_FOOT_RADIUS; // OLD
+            const collisionDistance = ball.radius + KICK_FOOT_RADIUS + KICK_FORWARD_BUFFER; // NEW with buffer
             const collisionDistanceSq = collisionDistance * collisionDistance;
 
-            // --- DETAILED KICK LOGGING (Log always during kick) ---
-            console.log(`Kick Check: Prog=${progress.toFixed(2)}, Foot=(${footPos.x.toFixed(0)}, ${footPos.y.toFixed(0)}), Ball=(${ball.x.toFixed(0)}, ${ball.y.toFixed(0)}), DistSq=${distanceSq.toFixed(0)}, NeededSq=${collisionDistanceSq.toFixed(0)}`);
-            // ------------------------------
-
-            if (distanceSq <= collisionDistanceSq) { // Check distance ANY time during kick
-                // Collision detected during kick impact!
-                console.log("Kick collision! --- FORCE APPLIED ---"); // Make log clearer
+            if (distSq < collisionDistanceSq) {
+                console.log("Kick collision!");
                 const kickDirX = player.facingDirection;
-                ball.applyKick(kickDirX * KICK_FORCE_HORIZONTAL, KICK_FORCE_VERTICAL);
+                
+                // Calculate base kick force
+                const baseKickVX = kickDirX * KICK_FORCE_HORIZONTAL;
+                const baseKickVY = KICK_FORCE_VERTICAL;
 
-                // Prevent multiple hits per kick (IMPORTANT NOW)
-                player.isKicking = false; 
-                player.kickTimer = player.kickDuration; // Force kick to end
-                // Ideally, add a flag player.hasHitBallThisKick and check it here
+                // Calculate momentum boost from ball's current velocity
+                const momentumBoostVX = ball.vx * KICK_MOMENTUM_TRANSFER;
+                const momentumBoostVY = ball.vy * KICK_MOMENTUM_TRANSFER;
+
+                // Combine base kick and momentum boost
+                const finalKickVX = baseKickVX + momentumBoostVX;
+                const finalKickVY = baseKickVY + momentumBoostVY;
+
+                console.log(` Kick Details: Base=(${baseKickVX.toFixed(0)}, ${baseKickVY.toFixed(0)}), ` +
+                            `Momentum=(${momentumBoostVX.toFixed(0)}, ${momentumBoostVY.toFixed(0)}), ` +
+                            `Final=(${finalKickVX.toFixed(0)}, ${finalKickVY.toFixed(0)})`);
+
+                // Apply the final combined force
+                ball.applyKick(finalKickVX, finalKickVY); // NEW Call with momentum
+
+                // --- Play Kick Sound (Random) ---
+                playSound(kickSoundUrls);
+
+                // Prevent multiple hits per kick / prioritize kick over body/head
+                continue; // Skip body/head checks for this player if kick connected
             }
         }
 
         // --- Other Ball/Player Collisions (Body/Head) ---
-        // TODO: Implement simple circle-rect or circle-circle collision for body/head
+        // If we reached here, no kick collision occurred for this player this frame
         const bodyRect = player.getBodyRect();
         const headCircle = player.getHeadCircle();
 
@@ -451,6 +648,9 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              const bodyPenetrationY = (bodyOverlap * (distYBody / bodyDistance)) || 0;
              ball.x += bodyPenetrationX + Math.sign(distXBody) * 0.2; // NEW Push out + larger buffer
              ball.y += bodyPenetrationY + Math.sign(distYBody) * 0.2; // NEW Push out + larger buffer
+
+             // --- Play Hit Sound (Random) ---
+             playSound(hitSoundUrls);
         }
 
         // Check collision with head (Circle vs Circle)
@@ -476,6 +676,9 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
              const headPenetrationY = (headOverlap * (dyHead / pushMagnitude)) || 0;
              ball.x += headPenetrationX + Math.sign(dxHead) * 0.2; // NEW Push out + larger buffer
              ball.y += headPenetrationY + Math.sign(dyHead) * 0.2; // NEW Push out + larger buffer
+
+             // --- Play Hit Sound (Random) ---
+             playSound(hitSoundUrls);
         }
     }
 
@@ -500,9 +703,11 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
             if (pole.x < SCREEN_WIDTH / 2) { // Left pole hit
                 player2Score++;
                 console.log(`%cGOAL for Player 2! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: green; font-weight: bold;');
+                playSound(player2GoalSoundUrls);
             } else { // Right pole hit
                 player1Score++;
                 console.log(`%cGOAL for Player 1! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: blue; font-weight: bold;');
+                playSound(player1GoalSoundUrls);
             }
             resetPositions(ball, p1, p2); // NEW Call
             return; // Exit collision handling for this frame
@@ -550,6 +755,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                 ball.vx = -ball.vx * POST_BOUNCE; 
                 ball.vy *= 0.95; 
                 ball.x += penetrationX + Math.sign(distX) * 0.1; 
+                playSound(crossbarHitSoundUrls);
             } else { // Collision is more vertical 
                 if (distY < 0) { // Hit TOP of crossbar 
                      console.log(' Top hit');
@@ -559,6 +765,7 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                     ball.vy = -Math.abs(ball.vy * POST_BOUNCE); // CORRECT - Bounce UP
                     // Add extra upward speed if bounce was weak
                     if (ball.vy > -80) ball.vy -= 80; // Ensure minimum upward speed
+                    playSound(crossbarHitSoundUrls);
                 } else { // Hit BOTTOM of crossbar 
                      console.log(' Bottom hit');
                     // Bounce first
@@ -569,10 +776,21 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
                     ball.y = post.y + post.height + ball.radius + 0.5; // Direct Placement with larger buffer
                     // ADD small horizontal nudge away from post center
                     ball.x += Math.sign(ball.x - (post.x + post.width / 2)) * 1.0;
+                    playSound(crossbarHitSoundUrls);
                 }
                 ball.vx *= 0.95; 
             }
         }
+    }
+
+    // Add ground bounce sound for the ball
+    if (ball.y + ball.radius >= GROUND_Y && ball.vy > 200) {
+        playSound(ballBounceSoundUrls);
+    }
+    
+    // Add wall bounce sound
+    if ((ball.x - ball.radius <= 0 || ball.x + ball.radius >= SCREEN_WIDTH) && Math.abs(ball.vx) > 200) {
+        playSound(wallHitSoundUrls);
     }
 }
 

@@ -6,6 +6,23 @@ type Point = {
     y: number;
 };
 
+// Declare an external function type for playing sounds
+// This will be passed in from the main game
+type PlaySoundFunction = (soundUrlArray: string[]) => void;
+let globalPlaySound: PlaySoundFunction | null = null;
+
+// Set the global sound function (called from main.ts)
+export function setPlayerSoundFunction(playSoundFn: PlaySoundFunction) {
+    globalPlaySound = playSoundFn;
+}
+
+// Helper function to play sound if available
+function playSound(soundUrlArray: string[]) {
+    if (globalPlaySound) {
+        globalPlaySound(soundUrlArray);
+    }
+}
+
 // Helper function to calculate endpoint based on standard math angle (0=right, positive=CCW)
 // Adjusted for canvas where Y increases downwards.
 function calculateEndPoint(start: Point, length: number, angle: number): Point {
@@ -82,7 +99,7 @@ export class Player {
     readonly baseTorsoLength: number = 36;
     readonly baseLimbWidth: number = 10;
     readonly baseArmLength: number = 24;
-    readonly baseLegLength: number = 28;
+    readonly baseLegLength: number = 32;
 
     // Current Size Attributes (affected by powerups)
     headRadius: number;
@@ -279,133 +296,189 @@ export class Player {
      * @param screenWidth The width of the game screen
      */
     update(dt: number, groundY: number, screenWidth: number) {
-        // Reset head standing state each frame
-        this.onOtherPlayerHead = false; 
-
-        // Apply gravity
-        this.vy += this.gravity * dt;
-
-        // Update position
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-
-        // Ground collision
-        let isOnGround = false;
-        if (this.y >= groundY) {
-            this.y = groundY;
-            this.vy = 0;
-            this.isJumping = false;
-            isOnGround = true;
-        }
-
-        // Wall collisions
-        const halfWidth = this.limbWidth / 2; // Simple approximation of half player width
-        if (this.x - halfWidth <= 0) {
-            this.x = halfWidth; // Snap to left boundary
-            this.vx = 0;        // Stop horizontal movement
-        } else if (this.x + halfWidth >= screenWidth) { // Need screenWidth passed in or accessed globally
-            this.x = screenWidth - halfWidth; // Snap to right boundary
-            this.vx = 0;         // Stop horizontal movement
-        }
-
-        // --- Update Animation --- 
-        let targetLeftThigh = STAND_ANGLE;
-        let targetRightThigh = STAND_ANGLE;
-        let targetLeftShin = 0;
-        let targetRightShin = 0;
-        let targetLeftArm = STAND_ANGLE;
-        let targetRightArm = STAND_ANGLE;
-
+        // First, handle kick animation if currently kicking
         if (this.isKicking) {
+            // Increment kick timer
+            const prevKickTimer = this.kickTimer;
             this.kickTimer += dt;
-            const progress = Math.min(this.kickTimer / this.kickDuration, 1.0);
             
-            const windupEnd = 0.2;
-            const impactFrame = 0.4;
-            const followEnd = 1.0;
-
-            let relativeThighSwing = 0;
-            let kickShinAngle = 0;
-
-            // --- Calculate relative angles ---
-            // Thigh swing
-            if (progress < windupEnd) { 
-                const phaseProgress = progress / windupEnd;
-                relativeThighSwing = lerp(0, -KICK_THIGH_WINDUP_REL, easeOutQuad(phaseProgress));
-            } else { 
-                const phaseProgress = (progress - windupEnd) / (followEnd - windupEnd);
-                relativeThighSwing = lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
-            }
-            // Shin angle
-            if (progress < windupEnd * 0.8) { 
-                 const phaseProgress = progress / (windupEnd * 0.8);
-                 kickShinAngle = lerp(0, KICK_SHIN_WINDUP_ANGLE, easeOutQuad(phaseProgress));
-            } else if (progress < impactFrame) { 
-                const phaseProgress = (progress - (windupEnd * 0.8)) / (impactFrame - (windupEnd * 0.8));
-                kickShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, easeInQuad(phaseProgress));
-            } else { 
-                const phaseProgress = (progress - impactFrame) / (followEnd - impactFrame);
-                kickShinAngle = lerp(KICK_SHIN_IMPACT_ANGLE, 0, easeOutQuad(phaseProgress));
-            }
-            // Arm angles (base for right kick)
-            const armProgress = Math.sin(progress * Math.PI); 
-            const armSwingMagnitude = Math.PI / 5;
-            const rightKick_RightArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) - (armSwingMagnitude * armProgress);
-            const rightKick_LeftArmTarget = STAND_ANGLE - (relativeThighSwing * 0.2) + (armSwingMagnitude * armProgress);
-
-            const nonKickingThighSwingFactor = 0.3; // Apply 30% of the kick swing in opposite direction
-
-            // --- Apply angles to targets based on ACTUAL direction --- 
-            if (this.facingDirection === 1) { // Kicking Right
-                targetRightThigh = STAND_ANGLE + relativeThighSwing; 
-                targetRightShin = -kickShinAngle;
-                targetLeftThigh = STAND_ANGLE - (relativeThighSwing * nonKickingThighSwingFactor); // Counter swing
-                targetLeftShin = 0;
-                targetRightArm = rightKick_RightArmTarget;
-                targetLeftArm = rightKick_LeftArmTarget;
-            } else { // Kicking Left
-                targetLeftThigh = STAND_ANGLE - relativeThighSwing; // Mirrored relative swing
-                targetLeftShin = kickShinAngle; // Shin angle is relative
-                targetRightThigh = STAND_ANGLE + (relativeThighSwing * nonKickingThighSwingFactor); // Counter swing
-                targetRightShin = 0;
-                // Swap arm angles
-                targetLeftArm = rightKick_RightArmTarget; 
-                targetRightArm = rightKick_LeftArmTarget;
-            }
-
-            // --- LOGGING FOR DEBUG ---
-            console.log(`Dir: ${this.facingDirection}, Prog: ${progress.toFixed(2)}, Thigh L/R: ${targetLeftThigh.toFixed(2)}/${targetRightThigh.toFixed(2)}, Shin L/R: ${targetLeftShin.toFixed(2)}/${targetRightShin.toFixed(2)}`);
-            // console.log(`Arm L/R: ${targetLeftArm.toFixed(2)}/${targetRightArm.toFixed(2)}`);
-
+            // Monitor progress through kick animation
+            const kickProgress = this.kickTimer / this.kickDuration;
+            // console.log(`Kick progress: ${kickProgress.toFixed(2)}`);
+            
+            // Reset kick timer if kick is done
             if (this.kickTimer >= this.kickDuration) {
-                this.isKicking = false;
                 this.kickTimer = 0;
+                this.isKicking = false;
+                // console.log('Kick animation ended');
             }
-        } else if (isOnGround && this.vx !== 0) {
-            // Walking animation - Calculate target angles for walking
-            this.walkCycleTimer += dt * WALK_CYCLE_SPEED;
-            const walkSin = Math.sin(this.walkCycleTimer);
-            targetLeftThigh = STAND_ANGLE - LEG_THIGH_SWING * walkSin * this.facingDirection;
-            targetRightThigh = STAND_ANGLE + LEG_THIGH_SWING * walkSin * this.facingDirection;
-            targetLeftShin = 0; 
-            targetRightShin = 0; 
-            targetLeftArm = STAND_ANGLE + RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
-            targetRightArm = STAND_ANGLE - RUN_UPPER_ARM_SWING * walkSin * this.facingDirection;
-        } else {
-            // Standing or Jumping pose - Target angles are STAND_ANGLE / default shin
-            this.walkCycleTimer = 0; 
-            // Target angles are already set to STAND_ANGLE/0 initially
-             // TODO: Implement specific jumping pose target angles
+            
+            // Animate kick based on timeline with distinct phases
+            const windupEnd = 0.2; // First 20% is windup
+            const impactFrame = 0.4; // Impact around 40% through
+            const followEnd = 1.0; // Follow through to the end
+            
+            // Threshold detection for tracking when the kick enters the impact frame
+            const impactThreshold = 0.01; // Small window for accuracy, but avoid single-frame detections
+            // Check if we just entered the impact frame
+            const wasInImpact = (prevKickTimer / this.kickDuration) >= (impactFrame - impactThreshold) && 
+                               (prevKickTimer / this.kickDuration) <= (impactFrame + impactThreshold);
+            const isInImpact = kickProgress >= (impactFrame - impactThreshold) && 
+                               kickProgress <= (impactFrame + impactThreshold);
+            
+            if (!wasInImpact && isInImpact) {
+                // console.log('%cKICK IMPACT FRAME!', 'color: red; font-weight: bold;');
+                // Impact event happened here!
+            }
+            
+            // Windback phase: Player readies leg
+            if (kickProgress < windupEnd) {
+                // Scale how far back the leg goes, easing in
+                const phaseProgress = easeInQuad(kickProgress / windupEnd);
+                
+                // Determine angle for the kicking leg
+                if (this.facingDirection === 1) {
+                    // Right Leg kicks when facing right
+                    this.rightThighAngle = STAND_ANGLE + phaseProgress * -KICK_THIGH_WINDUP_REL;
+                    this.rightShinAngle = KICK_SHIN_WINDUP_ANGLE;
+                } else {
+                    // Left Leg kicks when facing left
+                    this.leftThighAngle = STAND_ANGLE + phaseProgress * KICK_THIGH_WINDUP_REL;
+                    this.leftShinAngle = KICK_SHIN_WINDUP_ANGLE;
+                }
+            } 
+            // Kick forward phase: Leg extends for kick
+            else if (kickProgress < followEnd) {
+                // Linear progress from windup to follow-through
+                const phaseProgress = (kickProgress - windupEnd) / (followEnd - windupEnd);
+                
+                // Determine leg position during kick
+                if (this.facingDirection === 1) {
+                    // Right Leg kicks when facing right
+                    // Angle transitions from windback (-WINDUP_REL) to extended (FOLLOW_REL)
+                    // Negative windback, positive follow-through
+                    this.rightThighAngle = STAND_ANGLE + 
+                                          lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
+                    
+                    // Shin starts bent, extends for impact, then maintains
+                    if (phaseProgress < 0.5) {
+                        // First half: transition from windup to impact
+                        const shinPhase = phaseProgress / 0.5; // Normalize to 0-1 for shin
+                        this.rightShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, shinPhase);
+                    } else {
+                        // Second half: keep extended
+                        this.rightShinAngle = KICK_SHIN_IMPACT_ANGLE;
+                    }
+                } else {
+                    // Left Leg kicks when facing left (mirror the right kick)
+                    // For left kick, positive windback, negative follow-through
+                    this.leftThighAngle = STAND_ANGLE + 
+                                         lerp(KICK_THIGH_WINDUP_REL, -KICK_THIGH_FOLLOW_REL, phaseProgress);
+                    
+                    // Mirror the shin angle logic
+                    if (phaseProgress < 0.5) {
+                        const shinPhase = phaseProgress / 0.5;
+                        this.leftShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, shinPhase);
+                    } else {
+                        this.leftShinAngle = KICK_SHIN_IMPACT_ANGLE;
+                    }
+                }
+            }
+        } 
+        else {
+            // Not kicking - legs return to neutral 
+            
+            // Check if player has just started jumping
+            // This check was moved to jump method for sound playing
+            
+            // Apply gravity if not on ground
+            if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
+                this.vy += this.gravity * dt;
+            }
+            
+            // Check if player just landed
+            const wasInAir = this.isJumping;
+            const hitGround = this.y >= groundY;
+            
+            // Position & velocity updates
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            
+            // Handle ground collision
+            if (hitGround) {
+                this.y = groundY; // Snap to ground
+                if (wasInAir) {
+                    // Just landed
+                    this.isJumping = false;
+                    this.vy = 0;
+                    
+                    // Play landing sound if falling fast enough
+                    if (this.vy > 200) {
+                        playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
+                    }
+                }
+            }
+            
+            // Keep player within screen bounds
+            if (this.x < 0) this.x = 0;
+            if (this.x > screenWidth) this.x = screenWidth;
+            
+            // Handle crossbar hanging physics (if applicable)
+            
+            // If player can stand on the crossbar, implement that here
+            // if (this.onCrossbar) { this.vy = 0; this.y = crossbarY; }
+            
+            // Non-jumping leg animation
+            if (this.isJumping || this.onLeftCrossbar || this.onRightCrossbar) {
+                // Jumping - both arms up, legs in "bent" position
+                // ...legs code...
+                
+                // Calculate target angles for jumping pose
+                const targetLeftThigh = STAND_ANGLE + Math.PI * 0.2;  // Thigh lifted slightly
+                const targetRightThigh = STAND_ANGLE - Math.PI * 0.2; // Thigh lifted slightly
+                const targetShin = -Math.PI * 0.2; // Shin angle relative to thigh (bent forward)
+                
+                // Smoothly animate toward target
+                const legReturnSpeed = RETURN_SPEED * dt;
+                this.leftThighAngle += (targetLeftThigh - this.leftThighAngle) * legReturnSpeed;
+                this.rightThighAngle += (targetRightThigh - this.rightThighAngle) * legReturnSpeed;
+                this.leftShinAngle += (targetShin - this.leftShinAngle) * legReturnSpeed; 
+                this.rightShinAngle += (targetShin - this.rightShinAngle) * legReturnSpeed;
+                
+                // ... arms code ...
+            } else if (hitGround && this.vx !== 0) {
+                // Walking animation - Calculate target angles for walking
+                this.walkCycleTimer += dt * WALK_CYCLE_SPEED;
+                
+                // Sine wave oscillation for leg swing
+                const legSwing = Math.sin(this.walkCycleTimer * Math.PI * 2) * LEG_THIGH_SWING; 
+                
+                // Apply leg swinging
+                this.leftThighAngle = STAND_ANGLE + legSwing; 
+                this.rightThighAngle = STAND_ANGLE - legSwing; // Opposite of left
+                
+                // Apply natural shin angle based on leg swing
+                this.leftShinAngle = legSwing * -0.5; // Less bend than thigh
+                this.rightShinAngle = -legSwing * -0.5; 
+                
+                // Arm swings opposite of legs
+                this.leftArmAngle = STAND_ANGLE - legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
+                this.rightArmAngle = STAND_ANGLE + legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
+                
+            } else {
+                // Standing - Return to neutral pose
+                // Legs
+                const standingReturn = RETURN_SPEED * dt;
+                this.leftThighAngle += (STAND_ANGLE - this.leftThighAngle) * standingReturn;
+                this.rightThighAngle += (STAND_ANGLE - this.rightThighAngle) * standingReturn;
+                this.leftShinAngle += (0 - this.leftShinAngle) * standingReturn;
+                this.rightShinAngle += (0 - this.rightShinAngle) * standingReturn;
+                
+                // Arms
+                this.leftArmAngle += (STAND_ANGLE - this.leftArmAngle) * standingReturn;
+                this.rightArmAngle += (STAND_ANGLE - this.rightArmAngle) * standingReturn;
+            }
         }
-
-        // --- Smoothly interpolate current angles towards target angles ---
-        const lerpFactor = Math.min(1, dt * RETURN_SPEED); // Ensure factor is <= 1
-        this.leftThighAngle = lerp(this.leftThighAngle, targetLeftThigh, lerpFactor);
-        this.rightThighAngle = lerp(this.rightThighAngle, targetRightThigh, lerpFactor);
-        this.leftShinAngle = lerp(this.leftShinAngle, targetLeftShin, lerpFactor);
-        this.rightShinAngle = lerp(this.rightShinAngle, targetRightShin, lerpFactor);
-        this.leftArmAngle = lerp(this.leftArmAngle, targetLeftArm, lerpFactor);
-        this.rightArmAngle = lerp(this.rightArmAngle, targetRightArm, lerpFactor);
 
         // Update Tumble State
         if (this.isTumbling) {
@@ -457,7 +530,11 @@ export class Player {
             this.vy = this.jumpPower;
             this.isJumping = true;
             this.onOtherPlayerHead = false; // No longer on head once jumped
-            // TODO: Play jump sound
+            
+            // Play jump sound
+            if (globalPlaySound) {
+                playSound(["sounds/jump1.mp3"]);
+            }
         }
     }
 
@@ -481,7 +558,7 @@ export class Player {
         const hipY = this.y - this.legLength;
         const height = this.legLength + this.torsoLength; // Torso + Legs
         // Use limbWidth as a base for width, maybe slightly wider?
-        const width = this.limbWidth * 3; // NEW Wider Hitbox 
+        const width = this.limbWidth * 2; // BACK to standard width
         return {
             x: this.x - width / 2, // Centered around player x
             y: hipY - this.torsoLength, // Top of torso (approx neck)
@@ -524,5 +601,57 @@ export class Player {
         const foot = calculateEndPoint(knee, shinLength, thighAngle + shinAngle);
 
         return foot;
+    }
+
+    /**
+     * Gets the approximate position of the kicking foot's tip during the impact phase.
+     * Returns null if not currently kicking.
+     */
+    getKickImpactPoint(): Point | null {
+        if (!this.isKicking) {
+            return null;
+        }
+
+        // Calculate angles specifically for the intended impact moment (e.g., progress = 0.4)
+        const impactProgress = 0.4; // Corresponds to impactFrame in update()
+        const windupEnd = 0.2;
+        const followEnd = 1.0;
+
+        let impactThighSwing = 0;
+        let impactShinAngle = KICK_SHIN_IMPACT_ANGLE; // At impactProgress=0.4, shin angle should be at its target
+
+        // Calculate thigh swing at impactProgress
+        if (impactProgress >= windupEnd) { 
+            const phaseProgress = (impactProgress - windupEnd) / (followEnd - windupEnd);
+            // Note: Need access to KICK_THIGH_WINDUP_REL and KICK_THIGH_FOLLOW_REL here
+            // Assuming they are accessible or defined globally/passed in.
+            impactThighSwing = lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
+        } else {
+            // Simplified: If impact is somehow before windup end, assume 0 swing for impact point
+            impactThighSwing = 0; 
+        }
+        
+        const hipPos: Point = { x: this.x, y: this.y - this.legLength };
+        const thighLength = this.legLength * 0.5;
+        const shinLength = this.legLength * 0.5;
+
+        let kneePos: Point;
+        let footPos: Point;
+        let finalThighAngle: number;
+        let finalShinAngle = impactShinAngle;
+
+        if (this.facingDirection === 1) { // Kicking Right
+            finalThighAngle = STAND_ANGLE + impactThighSwing;
+            finalShinAngle = -impactShinAngle; // Shin angle needs flipping for right kick
+            kneePos = calculateEndPoint(hipPos, thighLength, finalThighAngle);
+            footPos = calculateEndPoint(kneePos, shinLength, finalThighAngle + finalShinAngle);
+        } else { // Kicking Left
+            finalThighAngle = STAND_ANGLE - impactThighSwing; // Mirrored relative swing
+            // finalShinAngle = impactShinAngle; // Already set
+            kneePos = calculateEndPoint(hipPos, thighLength, finalThighAngle);
+            footPos = calculateEndPoint(kneePos, shinLength, finalThighAngle + finalShinAngle);
+        }
+        
+        return footPos; // Return the calculated impact foot position
     }
 } 
