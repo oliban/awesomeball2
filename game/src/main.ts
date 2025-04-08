@@ -2,6 +2,85 @@ import './style.css'
 import { Player, setPlayerSoundFunction } from './Player'
 import { Ball } from './Ball'
 
+// --- Particle System ---
+class Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    lifespan: number; // in seconds
+    color: string;
+    radius: number;
+    gravityEffect: number; // 0 = no gravity, 1 = full gravity
+
+    constructor(x: number, y: number, vx: number, vy: number, lifespan: number, color: string, radius: number = 3, gravityEffect: number = 0.5) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.lifespan = lifespan;
+        this.color = color;
+        this.radius = radius;
+        this.gravityEffect = gravityEffect;
+    }
+
+    update(dt: number) {
+        // Apply gravity (scaled)
+        this.vy += GRAVITY * this.gravityEffect * dt;
+        
+        // Update position
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        // Decrease lifespan
+        this.lifespan -= dt;
+    }
+
+    draw(ctx: CanvasRenderingContext2D) {
+        // Fade out as lifespan decreases (optional)
+        const alpha = Math.max(0, Math.min(1, this.lifespan / 0.5)); // Fade over last 0.5 sec
+        ctx.globalAlpha = alpha;
+        
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = 1.0; // Reset alpha
+    }
+}
+
+// Global list to hold all active particles
+let particles: Particle[] = [];
+
+// Function to spawn goal explosion particles
+function spawnGoalParticles(x: number, y: number, teamColor: string, teamAccent: string) {
+    const count = 40; // Slightly more particles for violence
+    const speedMin = 300; // Increased speed
+    const speedMax = 550; // Increased speed
+    const lifespan = 1.0; // Slightly shorter lifespan for quicker burst
+    const colors = [teamColor, teamAccent, '#FFFFFF', '#FFFF00']; // Add white and yellow sparks
+
+    // Determine base angle based on goal side (x position)
+    const isLeftGoal = x < SCREEN_WIDTH / 2;
+    const baseAngle = isLeftGoal ? -Math.PI / 4 : -3 * Math.PI / 4; // -45 deg for left, -135 deg for right
+    const angleSpread = Math.PI / 3; // 60 degree spread
+
+    for (let i = 0; i < count; i++) {
+        // Calculate random angle within the spread around the base angle
+        const angle = baseAngle + (Math.random() - 0.5) * angleSpread;
+
+        const speed = Math.random() * (speedMax - speedMin) + speedMin;
+        const vx = Math.cos(angle) * speed;
+        const vy = Math.sin(angle) * speed; 
+        const color = colors[Math.floor(Math.random() * colors.length)];
+        const radius = Math.random() * 2 + 2; // Random size between 2 and 4
+        const gravity = 0.3 + Math.random() * 0.3; // Slightly less gravity effect (0.3-0.6)
+
+        particles.push(new Particle(x, y, vx, vy, lifespan, color, radius, gravity));
+    }
+}
+
 // --- Constants (Based on reference/awesome-ball/main.py) ---
 const SCREEN_WIDTH = 800
 const SCREEN_HEIGHT = 600
@@ -911,15 +990,29 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
 
         if (distanceSq < ball.radius * ball.radius) {
             // GOAL SCORED!
-            if (pole.x < SCREEN_WIDTH / 2) { // Left pole hit
+            let goalX = 0;
+            let goalY = GOAL_Y_POS + GOAL_HEIGHT / 2; // Middle of the goal height
+            let scoringPlayerColors = { main: '', accent: '' };
+
+            if (pole.x < SCREEN_WIDTH / 2) { // Left pole hit (Goal for P2)
                 player2Score++;
                 console.log(`%cGOAL for Player 2! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: green; font-weight: bold;');
                 playSound(player2GoalSoundUrls, true);
-            } else { // Right pole hit
+                goalX = LEFT_GOAL_X + GOAL_WIDTH / 2; // Center of left goal
+                scoringPlayerColors.main = p2.teamColor;
+                scoringPlayerColors.accent = p2.teamAccent;
+            } else { // Right pole hit (Goal for P1)
                 player1Score++;
                 console.log(`%cGOAL for Player 1! Score: P1 ${player1Score} - P2 ${player2Score}`, 'color: blue; font-weight: bold;');
                 playSound(player1GoalSoundUrls, true);
+                goalX = RIGHT_GOAL_X + GOAL_WIDTH / 2; // Center of right goal
+                scoringPlayerColors.main = p1.teamColor;
+                scoringPlayerColors.accent = p1.teamAccent;
             }
+            
+            // Spawn particles!
+            spawnGoalParticles(goalX, goalY, scoringPlayerColors.main, scoringPlayerColors.accent);
+
             resetPositions(ball, p1, p2); // NEW Call
             return; // Exit collision handling for this frame
         }
@@ -1019,6 +1112,15 @@ function gameLoop(timestamp: number) {
     const dt = Math.min(0.05, (timestamp - lastTime) / 1000); // Delta time in seconds, capped at 50ms
     lastTime = timestamp;
 
+    // --- Update Particles ---
+    // Iterate backwards to allow removal during iteration
+    for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].update(dt);
+        if (particles[i].lifespan <= 0) {
+            particles.splice(i, 1); // Remove dead particle
+        }
+    }
+
     // Handle Input FIRST
     handleInput();
 
@@ -1056,6 +1158,12 @@ function gameLoop(timestamp: number) {
     player1.draw(ctx!)
     player2.draw(ctx!)
     ball.draw(ctx!)
+    
+    // --- Draw Particles ---
+    for (const particle of particles) {
+        particle.draw(ctx!);
+    }
+
     // drawPowerups(ctx)
     // drawScoreboard(ctx)
 
