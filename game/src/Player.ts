@@ -48,6 +48,16 @@ const KICK_DURATION_SECONDS = 0.45; // Faster duration again (was 0.9)
 // Animation speed for returning limbs to neutral
 const RETURN_SPEED = 25.0; // Increased from 15.0 for faster snapping
 
+// Added Constants from main.ts for crossbar collision
+const SCREEN_WIDTH = 800; // Assuming fixed width for now, ideally pass this in
+const POST_THICKNESS = 8;
+const GOAL_HEIGHT = 150;
+const GOAL_WIDTH = 50;
+const GROUND_Y = 600 - 50; // Assuming fixed height/ground for now
+const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT;
+const LEFT_GOAL_X = 0;
+const RIGHT_GOAL_X = SCREEN_WIDTH - GOAL_WIDTH;
+
 // Helper for linear interpolation
 function lerp(start: number, end: number, t: number): number {
     return start * (1 - t) + end * t;
@@ -290,28 +300,71 @@ export class Player {
     }
 
     /**
-     * Updates the player's physics state (velocity, position, ground collision, wall collision).
-     * @param dt Delta time in seconds
-     * @param groundY The Y coordinate of the ground
-     * @param screenWidth The width of the game screen
+     * Updates the player state.
+     * @param dt Delta time
+     * @param groundY Ground Y coordinate
+     * @param screenWidth Screen width
      */
-    update(dt: number, groundY: number, screenWidth: number) {
+    update(dt: number, groundY: number, screenWidth: number) { // Keep params for now, use constants if needed
         // Reset flags
         this.onOtherPlayerHead = false;
-        
-        // Apply gravity ALWAYS (if in air and not on crossbar)
+        this.onLeftCrossbar = false; // Reset crossbar flags
+        this.onRightCrossbar = false;
+
+        // Apply gravity ALWAYS (if in air)
+        // Gravity is NOT applied if standing on a crossbar (checked later)
         if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
             this.vy += this.gravity * dt;
         }
 
         // Store if player was in air before position updates
         const wasInAir = this.isJumping;
+        const verticalVelocityBeforeUpdate = this.vy;
 
         // Update VERTICAL position ALWAYS
         this.y += this.vy * dt;
 
         // Update HORIZONTAL position ALWAYS (using existing velocity)
         this.x += this.vx * dt;
+
+        let landedOnCrossbar = false;
+        const crossbarTopY = GOAL_Y_POS - POST_THICKNESS; // Y coord of the top surface of the crossbar
+
+        // --- Check Crossbar Collision --- 
+        // Only check if falling or stationary vertically (vy >= 0)
+        if (this.vy >= 0) {
+            // Left Crossbar
+            const leftCrossbar = { x: LEFT_GOAL_X, y: crossbarTopY, width: GOAL_WIDTH };
+            if (this.x >= leftCrossbar.x && this.x <= leftCrossbar.x + leftCrossbar.width && 
+                this.y >= leftCrossbar.y && this.y <= leftCrossbar.y + 10) { // Check if feet are at or slightly below top
+                this.y = leftCrossbar.y; // Snap feet to crossbar top
+                this.vy = 0;
+                this.isJumping = false;
+                this.onLeftCrossbar = true;
+                landedOnCrossbar = true;
+                // Play landing sound only if falling significantly
+                if (wasInAir && verticalVelocityBeforeUpdate > 100) {
+                    playSound(["sounds/land1.mp3"]); // Simpler landing sound for bar
+                }
+            }
+
+            // Right Crossbar (only if not already landed on left)
+            if (!landedOnCrossbar) {
+                const rightCrossbar = { x: RIGHT_GOAL_X, y: crossbarTopY, width: GOAL_WIDTH };
+                if (this.x >= rightCrossbar.x && this.x <= rightCrossbar.x + rightCrossbar.width &&
+                    this.y >= rightCrossbar.y && this.y <= rightCrossbar.y + 10) { 
+                    this.y = rightCrossbar.y; // Snap feet to crossbar top
+                    this.vy = 0;
+                    this.isJumping = false;
+                    this.onRightCrossbar = true;
+                    landedOnCrossbar = true;
+                    // Play landing sound
+                     if (wasInAir && verticalVelocityBeforeUpdate > 100) {
+                        playSound(["sounds/land1.mp3"]);
+                    }
+                }
+            }
+        }
 
         // Handle kicking OR regular movement/animations
         if (this.isKicking) {
@@ -372,38 +425,41 @@ export class Player {
         } 
         else {
             // Not kicking: Handle non-kicking animations
-            
-            // Non-kicking leg animation
-            if (this.isJumping || this.onLeftCrossbar || this.onRightCrossbar) {
+            const isOnSurface = (this.y >= groundY || this.onLeftCrossbar || this.onRightCrossbar);
+
+            if (this.isJumping && !isOnSurface) { // Apply jumping animation only if jumping AND in the air
                 // Jumping animation
                 const targetLeftThigh = STAND_ANGLE + Math.PI * 0.2;
                 const targetRightThigh = STAND_ANGLE - Math.PI * 0.2;
-                const targetShin = -Math.PI * 0.2; 
-                
+                const targetShin = -Math.PI * 0.2;
+
                 const legReturnSpeed = RETURN_SPEED * dt;
                 this.leftThighAngle += (targetLeftThigh - this.leftThighAngle) * legReturnSpeed;
                 this.rightThighAngle += (targetRightThigh - this.rightThighAngle) * legReturnSpeed;
-                this.leftShinAngle += (targetShin - this.leftShinAngle) * legReturnSpeed; 
+                this.leftShinAngle += (targetShin - this.leftShinAngle) * legReturnSpeed;
                 this.rightShinAngle += (targetShin - this.rightShinAngle) * legReturnSpeed;
-            } else if (this.y >= groundY && this.vx !== 0) { // Check if on ground (use y >= groundY instead of hitGround as hitGround is defined later)
+                // Add arm animation for jumping if desired
+
+            } else if (isOnSurface && this.vx !== 0) { // Walking on ground OR crossbar
                 // Walking animation
                 this.walkCycleTimer += dt * WALK_CYCLE_SPEED;
-                const legSwing = Math.sin(this.walkCycleTimer * Math.PI * 2) * LEG_THIGH_SWING; 
-                this.leftThighAngle = STAND_ANGLE + legSwing; 
+                const legSwing = Math.sin(this.walkCycleTimer * Math.PI * 2) * LEG_THIGH_SWING;
+                this.leftThighAngle = STAND_ANGLE + legSwing;
                 this.rightThighAngle = STAND_ANGLE - legSwing;
-                this.leftShinAngle = legSwing * -0.5; 
-                this.rightShinAngle = -legSwing * -0.5; 
-                // Arm swings (keep if desired)
+                this.leftShinAngle = legSwing * -0.5;
+                this.rightShinAngle = -legSwing * -0.5;
+                // Arm swings
                 this.leftArmAngle = STAND_ANGLE - legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
                 this.rightArmAngle = STAND_ANGLE + legSwing * (RUN_UPPER_ARM_SWING / LEG_THIGH_SWING);
-            } else {
+
+            } else { // Standing on ground OR crossbar (or potentially other idle states)
                 // Standing - Return to neutral pose
                 const standingReturn = RETURN_SPEED * dt;
                 this.leftThighAngle += (STAND_ANGLE - this.leftThighAngle) * standingReturn;
                 this.rightThighAngle += (STAND_ANGLE - this.rightThighAngle) * standingReturn;
                 this.leftShinAngle += (0 - this.leftShinAngle) * standingReturn;
                 this.rightShinAngle += (0 - this.rightShinAngle) * standingReturn;
-                // Arms (keep if desired)
+                // Arms
                 this.leftArmAngle += (STAND_ANGLE - this.leftArmAngle) * standingReturn;
                 this.rightArmAngle += (STAND_ANGLE - this.rightArmAngle) * standingReturn;
             }
@@ -411,28 +467,26 @@ export class Player {
 
         // Keep player within screen bounds horizontally ALWAYS (after position update)
         if (this.x < 0) this.x = 0;
-        if (this.x > screenWidth) this.x = screenWidth;
+        if (this.x > screenWidth) this.x = screenWidth; // Use passed-in screenWidth
 
-        // Handle ground collision ALWAYS (after vertical position update)
-        const hitGround = this.y >= groundY;
-        if (hitGround) {
-            const verticalVelocityBeforeGroundHit = this.vy; // Store vy before potentially resetting it
-            this.y = groundY; // Snap to ground
-            this.vy = 0;      // Stop vertical movement
+        // Handle ground collision ONLY IF NOT landed on crossbar
+        if (!landedOnCrossbar) {
+            const hitGround = this.y >= groundY;
+            if (hitGround) {
+                const verticalVelocityBeforeGroundHit = this.vy; // Use velocity just before setting y
+                this.y = groundY; // Snap to ground
+                this.vy = 0;      // Stop vertical movement
 
-            if (wasInAir) { // Check if player just landed from a jump/fall
-                this.isJumping = false;
-                // Play landing sound if falling fast enough
-                if (verticalVelocityBeforeGroundHit > 200) { // Use the velocity before hitting ground
-                    playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
+                if (wasInAir) { // Check if player just landed from a jump/fall
+                    this.isJumping = false;
+                    // Play landing sound if falling fast enough
+                    if (verticalVelocityBeforeGroundHit > 200) {
+                        playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
+                    }
                 }
             }
         }
         
-        // Handle crossbar hanging physics (if applicable) - This needs careful placement, maybe after ground check?
-        // If player can stand on the crossbar, implement that here
-        // if (this.onCrossbar) { this.vy = 0; this.y = crossbarY; }
-
         // Update Tumble State
         if (this.isTumbling) {
             this.tumbleTimer -= dt;
