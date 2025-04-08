@@ -33,9 +33,9 @@ function calculateEndPoint(start: Point, length: number, angle: number): Point {
 }
 
 // --- Animation Constants (from reference) ---
-const WALK_CYCLE_SPEED = 0.25 * 60; // Adjusted for dt (cycles per second)
+const WALK_CYCLE_SPEED = 0.0625 * 60; // Reduced by 50% AGAIN from 0.125*60
 const LEG_THIGH_SWING = Math.PI / 7.0;
-const RUN_UPPER_ARM_SWING = Math.PI / 6.0;
+const RUN_UPPER_ARM_SWING = Math.PI / 6.0; // Keep the larger swing amplitude for now
 const STAND_ANGLE = -Math.PI / 2; // Straight down
 
 // Kick Animation Constants (Relative Pendulum)
@@ -310,24 +310,21 @@ export class Player {
         // 6. Shoes (Draw AFTER legs)
         ctx.fillStyle = this.teamAccent; // Use accent color for shoes
         // Function to draw a rotated rectangle (shoe)
-        const drawShoe = (footPos: Point, shinAngle: number, isLeftShoe: boolean, standStill: boolean, facingDir: 1 | -1) => {
-            let finalShoeAngle = shinAngle;
-            if (standStill) {
-                // If standing still, point shoe in player's facing direction (horizontal)
-                finalShoeAngle = (facingDir === 1) ? 0 : Math.PI; // 0 for right, PI for left
-            }
+        const drawShoe = (footPos: Point, facingDir: 1 | -1) => {
+            // Shoe angle is always horizontal based on facing direction
+            const finalShoeAngle = (facingDir === 1) ? 0 : Math.PI; // 0 for right, PI for left
+            
             ctx.save();
             ctx.translate(footPos.x, footPos.y);
-            ctx.rotate(finalShoeAngle); // Use potentially adjusted angle
+            ctx.rotate(finalShoeAngle); // Use horizontal angle
             // Draw rectangle centered vertically at the ankle, extending forward from the ankle point
-            // No offset needed; the rotation handles the direction.
             ctx.fillRect(0, -SHOE_HEIGHT / 2, SHOE_LENGTH, SHOE_HEIGHT);
             ctx.restore();
         };
 
-        // Pass state and facing direction to drawShoe
-        drawShoe(leftFootPos, this.leftThighAngle + this.leftShinAngle, true, isStandingStill, this.facingDirection);
-        drawShoe(rightFootPos, this.rightThighAngle + this.rightShinAngle, false, isStandingStill, this.facingDirection);
+        // Pass only foot position and facing direction to drawShoe
+        drawShoe(leftFootPos, this.facingDirection);
+        drawShoe(rightFootPos, this.facingDirection);
 
         ctx.restore(); // Restore context state
     }
