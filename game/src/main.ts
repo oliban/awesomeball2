@@ -454,25 +454,30 @@ const pressedKeys = new Set<string>();
 
 // Combined keydown listener
 document.addEventListener('keydown', (event) => {
-    pressedKeys.add(event.key);
+    const key = event.key.toLowerCase(); // Convert to lowercase
+    pressedKeys.add(key); // Add the lowercase key
 
     // Handle jumps on key press - only call jump if player is on ground or on other player's head
-    if (event.key === 'w') {
+    // Check lowercase 'w'
+    if (key === 'w') { 
         if (!player1.isJumping || player1.onOtherPlayerHead) {
             player1.jump();
         }
     }
-    if (event.key === 'ArrowUp') {
+    // Keep ArrowUp as is
+    if (event.key === 'ArrowUp') { 
         if (!player2.isJumping || player2.onOtherPlayerHead) {
             player2.jump();
         }
     }
 
     // Handle kick input
-    if (event.key === 's') {
+    // Check lowercase 's'
+    if (key === 's') { 
         player1.startKick();
     }
-    if (event.key === 'ArrowDown') {
+    // Keep ArrowDown as is
+    if (event.key === 'ArrowDown') { 
         player2.startKick();
     }
 
@@ -480,11 +485,12 @@ document.addEventListener('keydown', (event) => {
 });
 
 document.addEventListener('keyup', (event) => {
-    pressedKeys.delete(event.key);
+    const key = event.key.toLowerCase(); // Convert to lowercase
+    pressedKeys.delete(key); // Delete the lowercase key
 });
 
 function handleInput() {
-    // Player 1 Controls (WASD)
+    // Player 1 Controls (WASD) - Check lowercase keys
     // Check if 'a' is pressed but not 'd'
     if (pressedKeys.has('a') && !pressedKeys.has('d')) {
         player1.vx = -player1.playerSpeed;
@@ -498,13 +504,13 @@ function handleInput() {
         player1.vx = 0;
     }
 
-    // Player 2 Controls (Arrow Keys)
-     // Check if 'ArrowLeft' is pressed but not 'ArrowRight'
-    if (pressedKeys.has('ArrowLeft') && !pressedKeys.has('ArrowRight')) {
+    // Player 2 Controls (Arrow Keys) - Check lowercase arrow key names
+     // Check if 'arrowleft' is pressed but not 'arrowright'
+    if (pressedKeys.has('arrowleft') && !pressedKeys.has('arrowright')) {
         player2.vx = -player2.playerSpeed;
         player2.facingDirection = -1;
-    // Check if 'ArrowRight' is pressed but not 'ArrowLeft'
-    } else if (pressedKeys.has('ArrowRight') && !pressedKeys.has('ArrowLeft')) {
+    // Check if 'arrowright' is pressed but not 'arrowleft'
+    } else if (pressedKeys.has('arrowright') && !pressedKeys.has('arrowleft')) {
         player2.vx = player2.playerSpeed;
         player2.facingDirection = 1;
      // If both or neither are pressed, stop horizontal movement
@@ -785,15 +791,22 @@ function handleBallCollisions(ball: Ball, p1: Player, p2: Player) {
 
             if (distSq < collisionDistanceSq) {
                 console.log("Kick collision!");
-                const kickDirX = player.facingDirection;
                 
-                // Calculate base kick force
-                const baseKickVX = kickDirX * KICK_FORCE_HORIZONTAL;
-                const baseKickVY = KICK_FORCE_VERTICAL;
+                // Determine power based on kick timing
+                const kickProgress = player.kickTimer / player.kickDuration;
+                const impactThreshold = 0.25; // Hit before this = weak, after = strong
+                const powerScaleFactor = (kickProgress < impactThreshold) ? 0.3 : 1.0;
+                console.log(`Kick Progress: ${kickProgress.toFixed(2)}, Power Scale: ${powerScaleFactor}`);
 
-                // Calculate momentum boost from ball's current velocity
-                const momentumBoostVX = ball.vx * KICK_MOMENTUM_TRANSFER;
-                const momentumBoostVY = ball.vy * KICK_MOMENTUM_TRANSFER;
+                // Simplified base kick force (adjust if needed), scaled by timing
+                const kickDirX = player.facingDirection; // Direction player is facing
+                const baseKickVX = kickDirX * KICK_FORCE_HORIZONTAL * powerScaleFactor;
+                const baseKickVY = KICK_FORCE_VERTICAL * powerScaleFactor; // Typically upwards
+
+                // Calculate momentum contribution based on PLAYER'S velocity, scaled down by 60%
+                const momentumScaleFactor = 0.4; // Reduce momentum contribution significantly
+                const momentumBoostVX = player.vx * momentumScaleFactor; 
+                const momentumBoostVY = player.vy * momentumScaleFactor;
 
                 // Combine base kick and momentum boost
                 const finalKickVX = baseKickVX + momentumBoostVX;

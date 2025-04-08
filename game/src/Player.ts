@@ -331,44 +331,31 @@ export class Player {
             // ... (rest of the existing kick animation leg angle updates based on kickProgress) ...
             // Windback phase: Player readies leg
             if (kickProgress < windupEnd) {
-                // Scale how far back the leg goes, easing in
                 const phaseProgress = easeInQuad(kickProgress / windupEnd);
-                
-                // Determine angle for the kicking leg
-                if (this.facingDirection === 1) {
-                    // Right Leg kicks when facing right
+                if (this.facingDirection === 1) { // Right Kick
                     this.rightThighAngle = STAND_ANGLE + phaseProgress * -KICK_THIGH_WINDUP_REL;
-                    this.rightShinAngle = KICK_SHIN_WINDUP_ANGLE;
-                } else {
-                    // Left Leg kicks when facing left
-                    this.leftThighAngle = STAND_ANGLE + phaseProgress * KICK_THIGH_WINDUP_REL;
-                    this.leftShinAngle = KICK_SHIN_WINDUP_ANGLE;
+                    // Negate shin angle for right kick
+                    this.rightShinAngle = -KICK_SHIN_WINDUP_ANGLE; 
+                } else { // Left Kick
+                    this.leftThighAngle = STAND_ANGLE + phaseProgress * KICK_THIGH_WINDUP_REL; 
+                    this.leftShinAngle = KICK_SHIN_WINDUP_ANGLE; // Keep original for left
                 }
             } 
             // Kick forward phase: Leg extends for kick
             else if (kickProgress < followEnd) {
-                // Linear progress from windup to follow-through
                 const phaseProgress = (kickProgress - windupEnd) / (followEnd - windupEnd);
-                
-                // Determine leg position during kick
-                if (this.facingDirection === 1) {
-                    // Right Leg kicks when facing right
-                    this.rightThighAngle = STAND_ANGLE + 
-                                          lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
-                    
-                    // Shin starts bent, extends for impact, then maintains
+                if (this.facingDirection === 1) { // Right Kick
+                    this.rightThighAngle = STAND_ANGLE + lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
+                    // Lerp between negated shin angles for right kick
                     if (phaseProgress < 0.5) {
-                        const shinPhase = phaseProgress / 0.5; // Normalize to 0-1 for shin
-                        this.rightShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, shinPhase);
+                        const shinPhase = phaseProgress / 0.5;
+                        this.rightShinAngle = lerp(-KICK_SHIN_WINDUP_ANGLE, -KICK_SHIN_IMPACT_ANGLE, shinPhase);
                     } else {
-                        this.rightShinAngle = KICK_SHIN_IMPACT_ANGLE;
+                        this.rightShinAngle = -KICK_SHIN_IMPACT_ANGLE;
                     }
-                } else {
-                    // Left Leg kicks when facing left (mirror the right kick)
-                    this.leftThighAngle = STAND_ANGLE + 
-                                         lerp(KICK_THIGH_WINDUP_REL, -KICK_THIGH_FOLLOW_REL, phaseProgress);
-                    
-                    // Mirror the shin angle logic
+                } else { // Left Kick
+                    this.leftThighAngle = STAND_ANGLE + lerp(KICK_THIGH_WINDUP_REL, -KICK_THIGH_FOLLOW_REL, phaseProgress);
+                    // Keep original shin angles for left kick
                     if (phaseProgress < 0.5) {
                         const shinPhase = phaseProgress / 0.5;
                         this.leftShinAngle = lerp(KICK_SHIN_WINDUP_ANGLE, KICK_SHIN_IMPACT_ANGLE, shinPhase);
