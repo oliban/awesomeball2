@@ -75,8 +75,8 @@ export class GameManager {
             C.GROUND_Y - 100
         );
 
-        // DEBUG: Spawn a Ball Freeze powerup immediately - REMOVED
-        // const freezePowerup = new Powerup(PowerupType.BALL_FREEZE, C.SCREEN_WIDTH / 2, C.GROUND_Y - 150);
+        // DEBUG: Spawn a Ball Freeze powerup immediately [REMOVED]
+        // const freezePowerup = new Powerup(C.SCREEN_WIDTH / 2, C.GROUND_Y - 150, PowerupType.BALL_FREEZE);
         // this.powerupManager.addPowerup(freezePowerup);
     }
 
@@ -507,10 +507,8 @@ export class GameManager {
                     this.player2.justLanded = false; // Reset flag immediately after use
                 }
 
-                // Update Ball (only if not frozen)
-                if (!this.ball.isFrozen) {
-                    this.ball.update(dt);
-                } // else: Do nothing if frozen for now
+                // Update Ball (call unconditionally, internal logic handles freeze)
+                this.ball.update(dt);
 
                 // Update Powerups
                 this.powerupManager.update(dt);

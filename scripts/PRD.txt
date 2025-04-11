@@ -55,14 +55,14 @@ Based on `FEATURES.md` and analysis of `awesomeball1` code:
     *   **Sound Queue:** System for queueing sounds and announcements to prevent overlap (`queue_sound`, `queue_specific_sound`, `play_next_announcement`).
     *   **Sound Effects:** Specific files identified in `FEATURES.md` and implicitly loaded by `load_sounds` likely cover kick, jump, land, hits, goals, power-ups, player bumps, announcements (score, winner, lead).
 
-4.  **Power-ups (`ParachutePowerup` class, handled in `StickMan.apply_powerup`, global timers):**
-    *   **Spawn System:** Spawn at random intervals (`POWERUP_SPAWN_INTERVAL_MIN/MAX`) at the top, fall with parachutes (`POWERUP_DESCEND_SPEED`), drift slightly (`POWERUP_DRIFT_SPEED`). Drawn as boxes with parachutes.
-    *   **Types (from code & `FEATURES.md`):** Managed via `active_powerups` dict on player or global timers.
+4.  **Power-ups (`Powerup` class in TypeScript, spawning handled by `PowerupManager`):**
+    *   **Spawn System:** Spawn at random intervals (`minSpawnTime`/`maxSpawnTime`) at the top, fall with parachutes (`descendSpeed`), drift slightly (`driftSpeed`). Parachute disappears near ground. Drawn as boxes with parachutes. **Note:** Landing logic (stopping on ground, removing parachute) implemented.
+    *   **Types (defined in `PowerupType` enum):**
         *   `FLIGHT`: Player can fly (ignores gravity). Duration: `POWERUP_FLIGHT_DURATION`.
         *   `ROCKET_LAUNCHER`: Gives player ammo (`rocket_ammo`). Kick fires `Rocket` object. Rockets travel (`ROCKET_SPEED`), collide, create `Explosion` (visual + force `ROCKET_EXPLOSION_FORCE`).
         *   `BIG_PLAYER`: Scales player size (`POWERUP_BIG_PLAYER_SCALE`). Duration: `POWERUP_BIG_PLAYER_DURATION`. Increases kick power (`BIG_PLAYER_KICK_MULTIPLIER`). Cancels `SHRUNK`.
         *   `SUPER_JUMP`: Increases jump power (`POWERUP_SUPER_JUMP_MULTIPLIER`). Duration: `POWERUP_SUPER_JUMP_DURATION`.
-        *   `BALL_FREEZE`: Freezes ball in place (`ball.is_frozen`). Duration: `POWERUP_BALL_FREEZE_DURATION` (global timer).
+        *   `BALL_FREEZE`: Freezes ball in place (`ball.is_frozen`). Duration: `POWERUP_BALL_FREEZE_DURATION` (managed by `ball.freezeTimer`). **Note:** Timer logic fixed, ball unfreezes correctly.
         *   `SPEED_BOOST`: Increases player speed (`POWERUP_SPEED_BOOST_MULTIPLIER`). Duration: `POWERUP_SPEED_BOOST_DURATION`.
         *   `GOAL_SHIELD`: Activates pulsing shield in front of player's goal (`pX_shield_active`, `pX_shield_timer`). Duration: `POWERUP_GOAL_SHIELD_DURATION`. Ball bounces off.
         *   `SHRINK_OPPONENT`: Calls `apply_shrink` on opponent. Scales opponent down (`POWERUP_SHRINK_PLAYER_SCALE`). Duration: `POWERUP_SHRINK_PLAYER_DURATION`. Cancels opponent's `BIG_PLAYER`/`ENORMOUS_HEAD`.

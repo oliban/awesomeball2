@@ -36,29 +36,36 @@ export class Powerup {
     update(dt: number): void {
         if (!this.isActive) return;
 
-        // Basic physics: Apply velocity
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
+        // Apply physics only if not on ground
+        if (this.y < C.GROUND_Y - this.height) {
+            // Basic physics: Apply velocity
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
 
-        // Simple horizontal boundary check (reverse drift)
-        if (this.x < 0 || this.x + this.width > C.SCREEN_WIDTH) {
-            this.vx *= -1;
-            this.x = Math.max(0, Math.min(this.x, C.SCREEN_WIDTH - this.width)); // Clamp position
+            // Simple horizontal boundary check (reverse drift)
+            if (this.x < 0 || this.x + this.width > C.SCREEN_WIDTH) {
+                this.vx *= -1;
+                this.x = Math.max(0, Math.min(this.x, C.SCREEN_WIDTH - this.width)); // Clamp position
+            }
+
+            // Detach parachute when near the ground
+            if (this.hasParachute && this.y > C.GROUND_Y - (this.height * 3)) { // Detach a bit higher
+                this.hasParachute = false;
+                // Optional: Slightly change physics (e.g., stop drifting)
+                // this.vx = 0;
+            }
+        } else {
+            // Landed on the ground
+            this.y = C.GROUND_Y - this.height; // Snap to ground
+            this.vx = 0; // Stop horizontal movement
+            this.vy = 0; // Stop vertical movement
+            this.hasParachute = false; // Ensure parachute is gone
         }
 
-        // Deactivate if it falls off the bottom of the screen
+        // Deactivate if it falls off the bottom of the screen (redundant if landing works, but safe fallback)
         if (this.y > C.SCREEN_HEIGHT) {
             this.isActive = false;
         }
-
-        // Detach parachute when near the ground
-        if (this.hasParachute && this.y > C.GROUND_Y - (this.height * 2)) { // Example threshold
-            this.hasParachute = false;
-            // Optional: Slightly change physics (e.g., stop drifting)
-            // this.vx = 0; 
-        }
-
-        // TODO: Add other logic as needed
     }
 
     draw(ctx: CanvasRenderingContext2D): void {
