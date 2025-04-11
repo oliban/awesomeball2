@@ -5,6 +5,17 @@ export interface UIGameState {
     currentState: C.GameState;
     player1Score: number;
     player2Score: number;
+    // Player 1 Status
+    p1SpeedBoostTimer?: number;
+    p1SuperJumpTimer?: number;
+    p1BigPlayerTimer?: number;
+    // Player 2 Status
+    p2SpeedBoostTimer?: number;
+    p2SuperJumpTimer?: number;
+    p2BigPlayerTimer?: number;
+    // Global Status
+    ballIsFrozen?: boolean;
+    ballFreezeTimer?: number; // Maybe display time remaining?
     goalMessageTimer?: number; // Optional timer for goal message
     matchOverTimer?: number; // Optional timer for match over message
     winnerName?: string; // Optional winner name for match/game over
@@ -28,6 +39,7 @@ export class UIManager {
                 break;
             case C.GameState.PLAYING:
                 this.drawScoreboard(gameState.player1Score, gameState.player2Score);
+                this.drawPlayerStatusText(gameState); // Draw status text
                 // TODO: Add Off-screen ball indicator drawing here later
                 break;
             case C.GameState.GOAL_SCORED:
@@ -46,6 +58,9 @@ export class UIManager {
                 this.drawScoreboard(gameState.player1Score, gameState.player2Score);
                 break;
         }
+        // Draw Global Status Text (e.g., Ball Frozen)
+        this.drawGlobalStatusText(gameState);
+        
         // TODO: Draw Debug info if enabled
     }
 
@@ -73,6 +88,58 @@ export class UIManager {
         // Draw filled text
         this.ctx.fillStyle = C.WHITE;
         this.ctx.fillText(scoreText, C.SCREEN_WIDTH / 2, 10);
+    }
+
+    private drawPlayerStatusText(gameState: UIGameState): void {
+        const fontSize = 14;
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.fillStyle = C.WHITE;
+        this.ctx.textAlign = 'center';
+        let yOffset = -80; // Start text above the player's typical head height
+
+        // Player 1 Status Text
+        // TODO: Need player actual positions passed into UIManager or gameState
+        // Using fixed positions near scoreboard for now as placeholder
+        const p1StatusX = C.SCREEN_WIDTH * 0.25;
+        let p1StatusY = 50;
+        if (gameState.p1SpeedBoostTimer && gameState.p1SpeedBoostTimer > 0) {
+            this.ctx.fillText(`SPEED UP! ${gameState.p1SpeedBoostTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
+            p1StatusY += fontSize + 2;
+        }
+        if (gameState.p1SuperJumpTimer && gameState.p1SuperJumpTimer > 0) {
+            this.ctx.fillText(`HIGH JUMP! ${gameState.p1SuperJumpTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
+            p1StatusY += fontSize + 2;
+        }
+        if (gameState.p1BigPlayerTimer && gameState.p1BigPlayerTimer > 0) {
+            this.ctx.fillText(`BIG! ${gameState.p1BigPlayerTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
+            p1StatusY += fontSize + 2;
+        }
+
+        // Player 2 Status Text
+        const p2StatusX = C.SCREEN_WIDTH * 0.75;
+        let p2StatusY = 50;
+         if (gameState.p2SpeedBoostTimer && gameState.p2SpeedBoostTimer > 0) {
+            this.ctx.fillText(`SPEED UP! ${gameState.p2SpeedBoostTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            p2StatusY += fontSize + 2;
+        }
+        if (gameState.p2SuperJumpTimer && gameState.p2SuperJumpTimer > 0) {
+            this.ctx.fillText(`HIGH JUMP! ${gameState.p2SuperJumpTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            p2StatusY += fontSize + 2;
+        }
+        if (gameState.p2BigPlayerTimer && gameState.p2BigPlayerTimer > 0) {
+            this.ctx.fillText(`BIG! ${gameState.p2BigPlayerTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            p2StatusY += fontSize + 2;
+        }
+    }
+
+    private drawGlobalStatusText(gameState: UIGameState): void {
+        if (gameState.ballIsFrozen && gameState.ballFreezeTimer && gameState.ballFreezeTimer > 0) {
+            const text = `BALL FROZEN: ${gameState.ballFreezeTimer.toFixed(1)}s`;
+            this.ctx.font = `bold 18px Arial`;
+            this.ctx.fillStyle = 'rgba(173, 216, 230, 0.9)'; // Light blue
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(text, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT - 30); // Bottom center
+        }
     }
 
     private drawGoalMessage(): void {

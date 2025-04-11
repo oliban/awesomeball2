@@ -3,6 +3,10 @@ import { InputHandler } from './InputHandler';
 import { Player, setPlayerSoundFunction } from './Player';
 import { Ball } from './Ball';
 import { UIManager, UIGameState } from './UIManager';
+import { PowerupManager } from './PowerupManager';
+import { PowerupType } from './Powerup';
+import { ParticleSystem } from './ParticleSystem';
+import { Powerup } from './Powerup';
 
 // Dummy sound function if needed by Player constructor/methods
 const dummyPlaySound = (soundUrlArray: string[]) => { 
@@ -18,6 +22,7 @@ export class GameManager {
     private ctx: CanvasRenderingContext2D;
     private inputHandler: InputHandler;
     private uiManager: UIManager;
+    private particleSystem: ParticleSystem;
     private lastTime: number = 0;
     private accumulatedTime: number = 0;
     private timeStep: number = 1 / C.TARGET_FPS; // Time step for fixed update
@@ -30,11 +35,14 @@ export class GameManager {
     private currentState: C.GameState = C.GameState.WELCOME; // Initial state
     private goalMessageTimer: number = 0; // Timer for post-goal delay
     private matchOverTimer: number = 0; // Timer for match over display
+    private powerupManager: PowerupManager;
 
     constructor(ctx: CanvasRenderingContext2D) {
         this.ctx = ctx;
         this.inputHandler = new InputHandler();
         this.uiManager = new UIManager(ctx);
+        this.powerupManager = new PowerupManager();
+        this.particleSystem = new ParticleSystem();
 
         // Create Players (matching the complex constructor signature found in Player.ts)
         this.player1 = new Player(
@@ -66,6 +74,10 @@ export class GameManager {
             C.SCREEN_WIDTH / 2,
             C.GROUND_Y - 100
         );
+
+        // DEBUG: Spawn a Ball Freeze powerup immediately - REMOVED
+        // const freezePowerup = new Powerup(PowerupType.BALL_FREEZE, C.SCREEN_WIDTH / 2, C.GROUND_Y - 150);
+        // this.powerupManager.addPowerup(freezePowerup);
     }
 
     private resetPositions(): void {
@@ -96,6 +108,8 @@ export class GameManager {
         this.player2.isJumping = false;
         this.player2.isTumbling = false;
         // TODO: Reset other states like stun, powerups if needed
+
+        this.particleSystem.clear(); // Clear particles on reset
     }
 
     private startNewMatch(): void {
@@ -103,6 +117,7 @@ export class GameManager {
         this.player2Score = 0;
         this.resetPositions();
         this.currentState = C.GameState.PLAYING;
+        this.particleSystem.clear(); // Also clear particles here
     }
 
     private checkGoal(): void {
@@ -126,6 +141,7 @@ export class GameManager {
             }
             if (goalScored) {
                 // TODO: Add goal sound
+                this.particleSystem.emit('goal', this.ball.x, this.ball.y, 50); // Emit goal particles
                 this.currentState = C.GameState.GOAL_SCORED;
                 this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
 
@@ -140,8 +156,18 @@ export class GameManager {
     }
 
     private handleCollisions(): void {
+        if (this.currentState !== C.GameState.PLAYING) return;
+
         const players = [this.player1, this.player2];
         let kickAppliedThisFrame = false; 
+
+        // Check Player-Powerup Collisions FIRST (before other collisions?)
+        for (const player of players) {
+            const collectedPowerupType = this.powerupManager.checkCollisions(player);
+            if (collectedPowerupType) {
+                this.applyPowerup(player, collectedPowerupType);
+            }
+        }
 
         // --- Player-Player Collision ---
         const p1Body = this.player1.getBodyRect();
@@ -234,6 +260,8 @@ export class GameManager {
                         // Apply the final combined force
                         this.ball.applyKick(finalKickVx, finalKickVy);
                         
+                        this.particleSystem.emit('kick', kickPoint.x, kickPoint.y, 8, { kickDirection: player.facingDirection }); // Reduced count significantly (was 25)
+
                         kickAppliedThisFrame = true; 
                         // TODO: Add kick sound
                         continue; // Skip other ball collisions for this player if kick connects
@@ -268,7 +296,7 @@ export class GameManager {
                 
                 // Only reflect if ball is moving towards the head
                 if (dotProduct < 0) {
-                    const impulseMagnitude = -(1 + C.BALL_BOUNCE) * dotProduct;
+                    const impulseMagnitude = -(1 + C.BALL_BOUNCE * C.HEADBUTT_BOUNCE_FACTOR) * dotProduct;
                     this.ball.vx += impulseMagnitude * normX;
                     this.ball.vy += impulseMagnitude * normY;
                 }
@@ -311,6 +339,40 @@ export class GameManager {
                 // TODO: Add body hit sound
             }
         }
+
+        const ball = this.ball; // Alias for brevity
+
+        // --- Ball-Wall Collision (Vertical Walls) ---
+        if (ball.x - ball.radius < C.GOAL_LINE_X_LEFT || ball.x + ball.radius > C.GOAL_LINE_X_RIGHT) {
+            // Allow passing through goal sides, reflect only if above goal height
+            if (ball.y < C.GOAL_Y_POS) { 
+                ball.vx *= -C.WALL_BOUNCE; // Use new constant
+                // Correct position immediately to prevent sticking
+                ball.x = (ball.x < C.SCREEN_WIDTH / 2) ? C.GOAL_LINE_X_LEFT + ball.radius : C.GOAL_LINE_X_RIGHT - ball.radius;
+                this.particleSystem.emit('dust', ball.x, ball.y, 8); // Increased count
+            }
+        }
+
+        // --- Ball-Ceiling Collision ---
+        if (ball.y - ball.radius < 0) {
+            ball.y = ball.radius; // Correct position
+            ball.vy *= -C.WALL_BOUNCE; // Use new constant
+            this.particleSystem.emit('dust', ball.x, ball.y, 8); // Increased count
+        }
+
+        // --- Ball-Ground Collision ---
+        if (ball.y + ball.radius > C.GROUND_Y) {
+            ball.y = C.GROUND_Y - ball.radius; // Correct position
+            ball.vy *= -C.GROUND_BOUNCE; // Use new constant
+            // Apply horizontal friction only when on ground
+            ball.applyGroundFriction(); 
+            // Reduce spin on bounce
+            ball.rotationSpeed *= 0.8; 
+            // Only emit dust if bounce is significant
+            if (Math.abs(ball.vy) > 20) { // Threshold to avoid constant emission
+                this.particleSystem.emit('dust', ball.x, ball.y, 12, {color: '#A0522D'}); // Increased count
+            }
+        }
     }
 
     // Helper function for simple rectangle collision
@@ -345,6 +407,28 @@ export class GameManager {
         );
     }
 
+    private applyPowerup(player: Player, type: PowerupType): void {
+        console.log(`Applying powerup ${type} to player ${player === this.player1 ? 1 : 2}...`);
+        
+        switch (type) {
+            case PowerupType.SPEED_BOOST:
+                player.activateSpeedBoost(); 
+                break;
+            case PowerupType.BIG_PLAYER:
+                player.activateBigPlayer();
+                break;
+            case PowerupType.SUPER_JUMP:
+                player.activateSuperJump();
+                break;
+            case PowerupType.BALL_FREEZE:
+                // Ensure the freeze method is actually called
+                console.log("Calling ball.freeze()"); // Add log before call
+                this.ball.freeze(C.POWERUP_BALL_FREEZE_DURATION);
+                break;
+            // Add other cases later
+        }
+    }
+
     private update(dt: number): void {
         switch (this.currentState) {
             case C.GameState.WELCOME:
@@ -360,43 +444,79 @@ export class GameManager {
             case C.GameState.PLAYING:
                 // Handle Input
                 // Player 1
+                let p1EffectiveSpeed = this.player1.playerSpeed * this.player1.speedMultiplier;
                 if (this.inputHandler.isKeyPressed(C.Player1Controls.LEFT)) {
-                    this.player1.vx = -this.player1.playerSpeed;
+                    this.player1.vx = -p1EffectiveSpeed; // Use effective speed
                     this.player1.facingDirection = -1;
                 } else if (this.inputHandler.isKeyPressed(C.Player1Controls.RIGHT)) {
-                    this.player1.vx = this.player1.playerSpeed;
+                    this.player1.vx = p1EffectiveSpeed; // Use effective speed
                     this.player1.facingDirection = 1;
                 } else {
                     this.player1.vx = 0;
                 }
                 if (this.inputHandler.isKeyPressed(C.Player1Controls.JUMP)) {
-                    this.player1.jump();
+                    this.player1.jump(); // Jump uses multiplier internally
                 }
                 if (this.inputHandler.isKeyPressed(C.Player1Controls.KICK)) {
                     this.player1.startKick();
                 }
 
                 // Player 2
+                let p2EffectiveSpeed = this.player2.playerSpeed * this.player2.speedMultiplier;
                 if (this.inputHandler.isKeyPressed(C.Player2Controls.LEFT)) {
-                    this.player2.vx = -this.player2.playerSpeed;
+                    this.player2.vx = -p2EffectiveSpeed; // Use effective speed
                     this.player2.facingDirection = -1;
                 } else if (this.inputHandler.isKeyPressed(C.Player2Controls.RIGHT)) {
-                    this.player2.vx = this.player2.playerSpeed;
+                    this.player2.vx = p2EffectiveSpeed; // Use effective speed
                     this.player2.facingDirection = 1;
                 } else {
                     this.player2.vx = 0;
                 }
                 if (this.inputHandler.isKeyPressed(C.Player2Controls.JUMP)) {
-                    this.player2.jump();
+                    this.player2.jump(); // Jump uses multiplier internally
                 }
                 if (this.inputHandler.isKeyPressed(C.Player2Controls.KICK)) {
                     this.player2.startKick();
                 }
                 
+                // Emit jump particles (outside the key press check, triggered by Player state)
+                if (this.player1.isJumping && !this.player1.hasJumpedThisPress) {
+                    // console.log("GameManager: Emitting jump particles for P1"); // DEBUG LOG
+                    this.particleSystem.emit('jump', this.player1.x, this.player1.y, 6, { scale: this.player1.sizeMultiplier });
+                    this.player1.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
+                }
+                if (this.player2.isJumping && !this.player2.hasJumpedThisPress) {
+                     // console.log("GameManager: Emitting jump particles for P2"); // DEBUG LOG
+                     this.particleSystem.emit('jump', this.player2.x, this.player2.y, 6, { scale: this.player2.sizeMultiplier });
+                     this.player2.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
+                }
+
                 // Update Entities
                 this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
+                if (this.player1.justLanded) {
+                    // console.log(`GameManager: Emitting landing dust for P1 (Vy: ${this.player1.lastLandingVy.toFixed(1)})`); // DEBUG LOG
+                    this.particleSystem.emit('landingDust', this.player1.x, this.player1.y, 12, 
+                        { scale: this.player1.sizeMultiplier, landingVelocity: this.player1.lastLandingVy });
+                    this.player1.justLanded = false; // Reset flag immediately after use
+                }
                 this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
-                this.ball.update(dt);
+                 if (this.player2.justLanded) {
+                     // console.log(`GameManager: Emitting landing dust for P2 (Vy: ${this.player2.lastLandingVy.toFixed(1)})`); // DEBUG LOG
+                    this.particleSystem.emit('landingDust', this.player2.x, this.player2.y, 12, 
+                        { scale: this.player2.sizeMultiplier, landingVelocity: this.player2.lastLandingVy });
+                    this.player2.justLanded = false; // Reset flag immediately after use
+                }
+
+                // Update Ball (only if not frozen)
+                if (!this.ball.isFrozen) {
+                    this.ball.update(dt);
+                } // else: Do nothing if frozen for now
+
+                // Update Powerups
+                this.powerupManager.update(dt);
+
+                // Update Particle System
+                this.particleSystem.update(dt); // Update particles
 
                 // Handle Collisions
                 this.handleCollisions();
@@ -426,64 +546,74 @@ export class GameManager {
     }
 
     private render(): void {
-        // Clear screen
-        this.ctx.fillStyle = C.SKY_BLUE;
+        // Clear canvas
+        this.ctx.clearRect(0, 0, C.SCREEN_WIDTH, C.SCREEN_HEIGHT);
+
+        // Draw Background (Example: Light Blue Sky)
+        this.ctx.fillStyle = '#87CEEB';
         this.ctx.fillRect(0, 0, C.SCREEN_WIDTH, C.SCREEN_HEIGHT);
 
-        if (this.currentState === C.GameState.WELCOME) {
-            // Draw Welcome Message
-            this.ctx.fillStyle = C.WHITE;
-            this.ctx.font = '40px Arial';
+        // Draw Ground
+        this.ctx.fillStyle = '#228B22'; // Forest Green
+        this.ctx.fillRect(0, C.GROUND_Y, C.SCREEN_WIDTH, C.SCREEN_HEIGHT - C.GROUND_Y);
+
+        // Draw Goals
+        this.drawGoals();
+
+        // Draw Ball
+        this.ball.draw(this.ctx);
+
+        // Draw Players
+        this.player1.draw(this.ctx);
+        this.player2.draw(this.ctx);
+
+        // Draw Powerups
+        this.powerupManager.draw(this.ctx);
+
+        // Draw Particles
+        this.particleSystem.draw(this.ctx); // Draw particles
+
+        // Draw UI using UIManager
+        console.log(`GameManager render: ball.isFrozen=${this.ball.isFrozen}, ball.freezeTimer=${this.ball['freezeTimer']?.toFixed(2)}`); // DEBUG LOG
+        const uiState: UIGameState = {
+            currentState: this.currentState,
+            player1Score: this.player1Score,
+            player2Score: this.player2Score,
+            // Player 1 timers/state
+            p1SpeedBoostTimer: this.player1['speedBoostTimer'], // Access private timer
+            p1SuperJumpTimer: this.player1['superJumpTimer'], // Access private timer
+            p1BigPlayerTimer: this.player1['bigPlayerTimer'], // Access private timer
+            // Player 2 timers/state
+            p2SpeedBoostTimer: this.player2['speedBoostTimer'], // Access private timer
+            p2SuperJumpTimer: this.player2['superJumpTimer'], // Access private timer
+            p2BigPlayerTimer: this.player2['bigPlayerTimer'], // Access private timer
+            // Global state
+            ballIsFrozen: this.ball.isFrozen,
+            ballFreezeTimer: this.ball['freezeTimer'], // Access private timer
+            // Timers for UI messages (already passed)
+            goalMessageTimer: this.goalMessageTimer,
+            matchOverTimer: this.matchOverTimer
+            // Pass winner info if needed later
+        };
+        this.uiManager.draw(uiState);
+
+        // Draw Goal Message if needed
+        if (this.currentState === C.GameState.GOAL_SCORED) {
+            this.ctx.fillStyle = C.YELLOW; // Example color
+            this.ctx.font = '60px Impact';
             this.ctx.textAlign = 'center';
-            this.ctx.fillText("Awesome Ball 2!", C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 50);
-            this.ctx.font = '24px Arial';
-            this.ctx.fillText("Press Kick or Jump to Start", C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2);
-        } else {
-            // Draw ground
-            this.ctx.fillStyle = C.GRASS_GREEN;
-            this.ctx.fillRect(0, C.GROUND_Y, C.SCREEN_WIDTH, C.SCREEN_HEIGHT - C.GROUND_Y);
+            this.ctx.fillText("GOAL!", C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 3);
+        }
 
-            // Draw Goals
-            this.drawGoals();
-
-            // Draw Ball
-            this.ball.draw(this.ctx);
-
-            // Draw Players
-            this.player1.draw(this.ctx);
-            this.player2.draw(this.ctx);
-
-            // Draw UI using UIManager
-            const uiState: UIGameState = {
-                currentState: this.currentState,
-                player1Score: this.player1Score,
-                player2Score: this.player2Score,
-                goalMessageTimer: this.goalMessageTimer,
-                matchOverTimer: this.matchOverTimer
-            };
-            this.uiManager.draw(uiState);
-
-            // Draw Goal Message if needed
-            if (this.currentState === C.GameState.GOAL_SCORED) {
-                this.ctx.fillStyle = C.YELLOW; // Example color
-                this.ctx.font = '60px Impact';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText("GOAL!", C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 3);
-            }
-
-            // Draw Match Over Message if needed
-            if (this.currentState === C.GameState.MATCH_OVER) {
-                this.ctx.fillStyle = C.WHITE;
-                this.ctx.font = '50px Arial';
-                this.ctx.textAlign = 'center';
-                const winner = this.player1Score >= MATCH_POINT_LIMIT ? "Player 1" : "Player 2";
-                this.ctx.fillText(`${winner} Wins Match!`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 30);
-                this.ctx.font = '30px Arial';
-                this.ctx.fillText(`Score: ${this.player1Score} - ${this.player2Score}`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 + 20);
-            }
-            
-            // TODO: Draw Particles later
-            // TODO: Draw Powerups later
+        // Draw Match Over Message if needed
+        if (this.currentState === C.GameState.MATCH_OVER) {
+            this.ctx.fillStyle = C.WHITE;
+            this.ctx.font = '50px Arial';
+            this.ctx.textAlign = 'center';
+            const winner = this.player1Score >= MATCH_POINT_LIMIT ? "Player 1" : "Player 2";
+            this.ctx.fillText(`${winner} Wins Match!`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 30);
+            this.ctx.font = '30px Arial';
+            this.ctx.fillText(`Score: ${this.player1Score} - ${this.player2Score}`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 + 20);
         }
     }
 

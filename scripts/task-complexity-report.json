@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "generatedAt": "2025-04-11T07:54:01.531Z",
+    "tasksAnalyzed": 10,
+    "thresholdScore": 5,
+    "projectName": "Your Project Name",
+    "usedResearch": false
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 1,
+      "taskTitle": "Setup Project Structure and Game Loop",
+      "complexityScore": 5,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the project setup task into detailed subtasks covering project initialization, folder structure, canvas setup, game loop implementation, and input handling with specific technical requirements for each.",
+      "reasoning": "This task involves initial project setup which has moderate complexity due to TypeScript configuration, Canvas setup, and implementing the game loop. While straightforward for experienced developers, it requires careful attention to the architecture that will support the entire game."
+    },
+    {
+      "taskId": 2,
+      "taskTitle": "Implement Core Entities and Basic Physics",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Detail the implementation of the Player and Ball classes with specific subtasks for rendering, physics properties, collision detection, and field elements, including technical specifications for each physics component.",
+      "reasoning": "This task has higher complexity as it involves implementing core game entities with physics. Creating the stick figure rendering, physics properties, and collision detection requires careful implementation to ensure the game mechanics work correctly. This forms the foundation for gameplay."
+    },
+    {
+      "taskId": 3,
+      "taskTitle": "Implement Core Gameplay Mechanics",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Break down the implementation of core gameplay mechanics into detailed subtasks covering kicking physics, goal detection logic, game state management, and position reset mechanisms with specific algorithms for each.",
+      "reasoning": "This task has high complexity as it implements the core gameplay mechanics including kicking, scoring, and game state management. The physics calculations for kicking and the state transitions require careful implementation to ensure smooth gameplay."
+    },
+    {
+      "taskId": 4,
+      "taskTitle": "Implement Advanced Player Animations and Physics",
+      "complexityScore": 9,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Detail the implementation of advanced player animations and physics with specific subtasks for animation states, headbutt mechanics, collision physics, and enhanced ball physics with mathematical formulas for each component.",
+      "reasoning": "This task has very high complexity due to the detailed animations and advanced physics interactions. Implementing walk cycles, kick animations, and player-player collisions requires sophisticated mathematics and careful state management."
+    },
+    {
+      "taskId": 5,
+      "taskTitle": "Implement UI and Scoreboard",
+      "complexityScore": 6,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the UI implementation into detailed subtasks covering scoreboard design, game message system, screen transitions, and visual indicators with specific rendering requirements for each element.",
+      "reasoning": "This task has moderate complexity focused on UI elements. While not as mathematically complex as physics, it requires careful design and implementation to ensure the UI is responsive, informative, and visually appealing."
+    },
+    {
+      "taskId": 6,
+      "taskTitle": "Implement Basic Power-up System",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Detail the implementation of the power-up system with specific subtasks for the spawning mechanism, collision detection, core power-up effects, and visual indicators with technical specifications for each component.",
+      "reasoning": "This task has significant complexity as it introduces a new game system with multiple power-up types. The spawning system, collision detection, and various power-up effects require careful implementation and integration with existing systems."
+    },
+    {
+      "taskId": 7,
+      "taskTitle": "Implement Particle System and Audio",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the particle system and audio implementation into detailed subtasks covering particle physics, different particle types, audio loading/playback, and event triggering with specific technical requirements for each component.",
+      "reasoning": "This task has substantial complexity as it implements two separate systems that enhance game feel. The particle system requires physics calculations for realistic movement, while the audio system needs careful event handling and sound management."
+    },
+    {
+      "taskId": 8,
+      "taskTitle": "Implement Advanced Power-ups",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Detail the implementation of advanced power-ups with specific subtasks for each complex power-up type, including technical specifications for their unique physics, visual effects, and gameplay impacts.",
+      "reasoning": "This task has high complexity due to the implementation of numerous power-ups with complex behaviors. The rocket launcher and sword power-ups in particular require sophisticated collision detection and physics calculations, plus testing for interactions between power-ups."
+    },
+    {
+      "taskId": 9,
+      "taskTitle": "Implement Weather and Time of Day Systems",
+      "complexityScore": 7,
+      "recommendedSubtasks": 4,
+      "expansionPrompt": "Break down the weather and time of day systems into detailed subtasks covering weather selection logic, physics modifications, particle effects, and visual transitions with specific algorithms for each component.",
+      "reasoning": "This task has significant complexity as it implements environmental systems that affect gameplay. The weather effects modify physics properties, while the time of day system requires smooth visual transitions and performance considerations."
+    },
+    {
+      "taskId": 10,
+      "taskTitle": "Final Polish, Balancing and Optimization",
+      "complexityScore": 8,
+      "recommendedSubtasks": 5,
+      "expansionPrompt": "Detail the final polish phase with specific subtasks for physics tuning, power-up balancing, performance optimization, and bug fixing with measurable criteria for each component.",
+      "reasoning": "This task has high complexity due to its comprehensive nature across all game systems. Balancing gameplay, optimizing performance, and fixing bugs requires deep understanding of all implemented systems and careful testing to ensure a polished final product."
+    }
+  ]
+}

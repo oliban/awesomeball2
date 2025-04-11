@@ -1,5 +1,7 @@
 // Based on SimpleStickMan from reference/awesome-ball/simple_player.py
 
+import * as C from './Constants';
+
 // Basic type for representing points or vectors
 type Point = {
     x: number;
@@ -85,6 +87,7 @@ export class Player {
 
     // State
     public isJumping: boolean;
+    public hasJumpedThisPress: boolean = false; // Added flag for particle emission
     public isKicking: boolean;
     public kickTimer: number;
     public kickDuration: number = KICK_DURATION_SECONDS; 
@@ -93,6 +96,8 @@ export class Player {
     public onOtherPlayerHead: boolean = false;
     public onLeftCrossbar: boolean;
     public onRightCrossbar: boolean;
+    public justLanded: boolean = false; // Flag for landing dust effect
+    public lastLandingVy: number = 0; // Store vertical velocity on landing
     public isStunned: boolean;
     public stunTimer: number;
     public isTumbling: boolean;
@@ -157,6 +162,15 @@ export class Player {
     public playerSpeed: number; // Set based on BASE_PLAYER_SPEED
     public gravity: number; // Store the gravity value affecting this player
 
+    // --- Powerup State & Timers --- 
+    public speedMultiplier: number = 1.0;
+    public jumpMultiplier: number = 1.0;
+    public sizeMultiplier: number = 1.0;
+    private speedBoostTimer: number = 0;
+    private superJumpTimer: number = 0;
+    private bigPlayerTimer: number = 0;
+    // Add timers for other effects later (shrink, enormous head, etc.)
+
     constructor(
         x: number,
         y: number,
@@ -179,6 +193,9 @@ export class Player {
         this.kickTimer = 0;
         this.walkCycleTimer = 0;
         this.facingDirection = facing;
+        this.hasJumpedThisPress = false; // Initialize in constructor
+        this.justLanded = false; // Initialize flag
+        this.lastLandingVy = 0; // Initialize velocity store
         this.onLeftCrossbar = false;
         this.onRightCrossbar = false;
         this.isStunned = false;
@@ -510,12 +527,17 @@ export class Player {
                 this.vy = 0;      // Stop vertical movement
 
                 if (wasInAir) { // Check if player just landed from a jump/fall
+                    this.lastLandingVy = verticalVelocityBeforeGroundHit; // Store landing velocity
                     this.isJumping = false;
+                    this.hasJumpedThisPress = false; // Reset particle flag on land
+                    this.justLanded = true; // Set landing flag
                     // Play landing sound if falling fast enough
                     if (verticalVelocityBeforeGroundHit > 200) {
                         playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
                     }
                 }
+            } else { // Player is in the air
+                this.justLanded = false; // Ensure flag is false if not on ground
             }
         }
         
@@ -539,6 +561,27 @@ export class Player {
             }
         }
 
+        // --- Update Powerup Timers & Effects --- 
+        if (this.speedBoostTimer > 0) {
+            this.speedBoostTimer -= dt;
+            if (this.speedBoostTimer <= 0) {
+                this.deactivateSpeedBoost();
+            }
+        }
+        if (this.superJumpTimer > 0) {
+            this.superJumpTimer -= dt;
+            if (this.superJumpTimer <= 0) {
+                this.deactivateSuperJump();
+            }
+        }
+         if (this.bigPlayerTimer > 0) {
+            this.bigPlayerTimer -= dt;
+            if (this.bigPlayerTimer <= 0) {
+                this.deactivateBigPlayer();
+            }
+        }
+        // Update other timers later
+
         // TODO: Handle stun timer
         // TODO: Update powerup timers
     }
@@ -561,19 +604,23 @@ export class Player {
      * Makes the player jump if they are on the ground.
      */
     public jump() {
-        // Allow jump only if on a valid surface (ground, crossbar, other player's head)
         const onSurface = this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar || this.onOtherPlayerHead;
         
-        if (onSurface) { // Only allow jump if on a surface
-            // Apply jumpPower (negative for upward movement)
-            this.vy = this.jumpPower;
-            this.isJumping = true; // Set state to jumping (used for animation/landing logic)
+        if (onSurface) { 
+            // Apply jumpPower * jumpMultiplier
+            let effectiveJumpPower = this.jumpPower * this.jumpMultiplier; 
+            // Add slight boost if player is big
+            if (this.sizeMultiplier > 1.0) {
+                effectiveJumpPower *= 1.1; // Example: 10% jump boost when big
+            }
+            this.vy = effectiveJumpPower; 
+            this.isJumping = true; 
             this.onOtherPlayerHead = false; // Reset flag if jumping off head
             this.onLeftCrossbar = false; // Reset crossbar flag if jumping off it
             this.onRightCrossbar = false; // Reset crossbar flag if jumping off it
 
             // Debug logging
-            console.log(`Player jump: vy=${this.vy}, jumpPower=${this.jumpPower}`);
+            console.log(`Player jump: basePower=${this.jumpPower}, multiplier=${this.jumpMultiplier}, sizeFactor=${this.sizeMultiplier > 1.0 ? 1.1 : 1.0}, vy=${this.vy}`);
 
             // Play jump sound
             if (globalPlaySound) {
@@ -602,14 +649,12 @@ export class Player {
     }
 
     public getBodyRect(): { x: number, y: number, width: number, height: number } {
-        // Approximate body rectangle from hips down to feet
         const hipY = this.y - this.legLength;
-        const height = this.legLength + this.torsoLength; // Torso + Legs
-        // Use limbWidth as a base for width, maybe slightly wider?
-        const width = this.limbWidth * 2; // BACK to standard width
+        const height = this.legLength + this.torsoLength; 
+        const width = this.limbWidth * 2; // Keep width based on limbWidth for now
         return {
-            x: this.x - width / 2, // Centered around player x
-            y: hipY - this.torsoLength, // Top of torso (approx neck)
+            x: this.x - width / 2, 
+            y: hipY - this.torsoLength, 
             width: width,
             height: height
         };
@@ -711,5 +756,55 @@ export class Player {
         hitboxes.push({ x: rightFootHitboxCenter.x, y: rightFootHitboxCenter.y, radius: FOOT_HITBOX_RADIUS });
 
         return hitboxes;
+    }
+
+    // --- Powerup Activation/Deactivation Methods ---
+
+    public activateSpeedBoost(): void {
+        this.speedMultiplier = C.POWERUP_SPEED_BOOST_MULTIPLIER; 
+        this.speedBoostTimer = C.POWERUP_SPEED_BOOST_DURATION;
+        console.log("Speed Boost Activated!");
+        // TODO: Add visual effect?
+    }
+
+    private deactivateSpeedBoost(): void {
+        this.speedMultiplier = 1.0;
+        console.log("Speed Boost Deactivated.");
+    }
+
+    public activateSuperJump(): void {
+        this.jumpMultiplier = C.POWERUP_SUPER_JUMP_MULTIPLIER;
+        this.superJumpTimer = C.POWERUP_SUPER_JUMP_DURATION;
+        console.log("Super Jump Activated!");
+    }
+
+    private deactivateSuperJump(): void {
+        this.jumpMultiplier = 1.0;
+        console.log("Super Jump Deactivated.");
+    }
+
+    public activateBigPlayer(): void {
+        this.sizeMultiplier = C.POWERUP_BIG_PLAYER_SCALE;
+        this.bigPlayerTimer = C.POWERUP_BIG_PLAYER_DURATION;
+        this.updateSizeAttributes(); // Apply size change immediately
+        console.log("Big Player Activated!");
+        // TODO: Handle conflict with shrink
+    }
+
+    private deactivateBigPlayer(): void {
+        this.sizeMultiplier = 1.0;
+        this.updateSizeAttributes(); // Revert size change
+        console.log("Big Player Deactivated.");
+    }
+
+    // Helper to apply size multiplier to dimensions
+    private updateSizeAttributes(): void {
+        this.headRadius = this.baseHeadRadius * this.sizeMultiplier;
+        this.torsoLength = this.baseTorsoLength * this.sizeMultiplier;
+        // Keep limb width constant for now, or scale differently?
+        // this.limbWidth = this.baseLimbWidth * this.sizeMultiplier; 
+        this.armLength = this.baseArmLength * this.sizeMultiplier;
+        this.legLength = this.baseLegLength * this.sizeMultiplier;
+        // Recalculate derived positions if needed, or let draw handle scaling
     }
 } 

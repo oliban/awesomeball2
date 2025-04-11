@@ -18,8 +18,22 @@ export const BASE_JUMP_POWER = -450; // Adjusted jump power for lower gravity (w
 export const BASE_KICK_FORCE_X = 600; // Keep kick force X (pixels/sec)
 export const BASE_KICK_FORCE_Y = -450; // Keep kick force Y (pixels/sec)
 export const BALL_FRICTION = 0.98; // Keep friction
+export const GROUND_FRICTION = 0.9; // Added ground friction for ball
 export const BALL_BOUNCE = 0.85; // Keep increased bounciness
+export const HEADBUTT_BOUNCE_FACTOR = 1.8; // Increased bounciness factor (was 1.1)
+export const WALL_BOUNCE = 0.85; // Added, same as ball bounce for now
+export const GROUND_BOUNCE = 0.85; // Added, same as ball bounce for now
 export const GROUND_Y = SCREEN_HEIGHT - 50;
+
+// Powerup Constants (Durations in seconds, multipliers as factors)
+export const POWERUP_SPEED_BOOST_MULTIPLIER = 1.5; // 50% faster
+export const POWERUP_SPEED_BOOST_DURATION = 10.0; 
+export const POWERUP_SUPER_JUMP_MULTIPLIER = 1.4; // 40% higher jump
+export const POWERUP_SUPER_JUMP_DURATION = 10.0;
+export const POWERUP_BIG_PLAYER_SCALE = 1.5; // 50% bigger
+export const POWERUP_BIG_PLAYER_DURATION = 12.0;
+export const POWERUP_BALL_FREEZE_DURATION = 5.0;
+// Add constants for Ball Freeze, Shrink, etc. later
 
 // Player Constants (Simplified for now)
 export const PLAYER_HEAD_RADIUS = 12;

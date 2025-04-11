@@ -14,7 +14,9 @@ export class Ball {
     public radius: number;
     public color: string;
     public rotation: number = 0; // Add rotation property
-    // public isFrozen: boolean = false; // Add later for power-up
+    public rotationSpeed: number = 0; // Added rotationSpeed property
+    public isFrozen: boolean = false; // Add isFrozen state
+    private freezeTimer: number = 0; // Add freeze timer
 
     constructor(x: number, y: number) {
         this.x = x;
@@ -26,6 +28,20 @@ export class Ball {
     }
 
     update(dt: number): void {
+        // Log state before check
+        console.log(`Ball update check: isFrozen=${this.isFrozen}, freezeTimer=${this.freezeTimer.toFixed(2)}`); // DEBUG LOG
+
+        // Decrement freeze timer if frozen
+        if (this.isFrozen) {
+            this.freezeTimer -= dt; // Ensure timer decreases
+            console.log(`Ball frozen timer: ${this.freezeTimer.toFixed(2)}`); // DEBUG LOG
+            if (this.freezeTimer <= 0) {
+                this.isFrozen = false;
+                console.log("Ball Unfrozen!");
+            }
+            return; // Skip all physics updates if frozen
+        }
+
         // Apply gravity
         this.vy += C.GRAVITY * dt; // Gravity acceleration
 
@@ -41,6 +57,9 @@ export class Ball {
         // Update rotation based on horizontal movement
         // Angular velocity = linear velocity / radius
         this.rotation += (this.vx / this.radius) * dt;
+
+        // Apply rotation speed if defined (from GameManager bounce logic)
+        this.rotation += this.rotationSpeed * dt;
 
         // Ground collision and bounce
         if (this.y + this.radius > C.GROUND_Y) {
@@ -106,6 +125,15 @@ export class Ball {
             ctx.fill();
         }
 
+        // 3. Draw Frozen Overlay if needed
+        if (this.isFrozen) {
+            ctx.beginPath();
+            ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(173, 216, 230, 0.6)'; // Light blue with 60% opacity
+            ctx.fill();
+            ctx.closePath();
+        }
+
         ctx.restore(); // Restore context state
     }
 
@@ -120,5 +148,19 @@ export class Ball {
         // Directly set velocity for now, can be additive later
         this.vx = forceX;
         this.vy = forceY;
+    }
+
+    // Method to be called by GameManager to freeze the ball
+    public freeze(duration: number): void {
+        this.isFrozen = true;
+        this.freezeTimer = duration;
+        this.vx = 0; // Stop movement immediately
+        this.vy = 0;
+        console.log(`Ball Frozen for ${duration}s!`);
+    }
+
+    // Method to apply ground friction
+    public applyGroundFriction(): void {
+        this.vx *= C.GROUND_FRICTION;
     }
 } 
