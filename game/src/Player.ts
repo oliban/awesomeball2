@@ -1,29 +1,13 @@
 // Based on SimpleStickMan from reference/awesome-ball/simple_player.py
 
 import * as C from './Constants';
+import { audioManager } from './AudioManager'; // Import the AudioManager
 
 // Basic type for representing points or vectors
 type Point = {
     x: number;
     y: number;
 };
-
-// Declare an external function type for playing sounds
-// This will be passed in from the main game
-type PlaySoundFunction = (soundUrlArray: string[]) => void;
-let globalPlaySound: PlaySoundFunction | null = null;
-
-// Set the global sound function (called from main.ts)
-export function setPlayerSoundFunction(playSoundFn: PlaySoundFunction) {
-    globalPlaySound = playSoundFn;
-}
-
-// Helper function to play sound if available
-function playSound(soundUrlArray: string[]) {
-    if (globalPlaySound) {
-        globalPlaySound(soundUrlArray);
-    }
-}
 
 // Helper function to calculate endpoint based on standard math angle (0=right, positive=CCW)
 // Adjusted for canvas where Y increases downwards.
@@ -393,7 +377,7 @@ export class Player {
                 landedOnCrossbar = true;
                 // Play landing sound only if falling significantly
                 if (wasInAir && verticalVelocityBeforeUpdate > 100) {
-                    playSound(["sounds/land1.mp3"]); // Simpler landing sound for bar
+                    audioManager.playSound('LAND_1'); // Simpler landing sound for bar
                 }
             }
 
@@ -409,7 +393,7 @@ export class Player {
                     landedOnCrossbar = true;
                     // Play landing sound
                      if (wasInAir && verticalVelocityBeforeUpdate > 100) {
-                        playSound(["sounds/land1.mp3"]);
+                        audioManager.playSound('LAND_1');
                     }
                 }
             }
@@ -533,7 +517,7 @@ export class Player {
                     this.justLanded = true; // Set landing flag
                     // Play landing sound if falling fast enough
                     if (verticalVelocityBeforeGroundHit > 200) {
-                        playSound(["sounds/land1.mp3", "sounds/land2.mp3"]);
+                        audioManager.playSound('LAND_2');
                     }
                 }
             } else { // Player is in the air
@@ -590,13 +574,19 @@ export class Player {
      * Initiates the kick action if the player is not already kicking.
      */
     public startKick() {
-        if (!this.isKicking && !this.isStunned && !this.isTumbling) {
+        if (!this.isKicking && !this.isStunned && !this.isTumbling) { 
             this.isKicking = true;
             this.kickTimer = 0;
-            // Optionally stop horizontal movement during kick
-            // this.vx = 0; 
-            // Play kick sound (Ensure sound logic exists or is handled elsewhere)
-            // playSound(['sounds/kick_ball1.mp3', 'sounds/kick_ball2.mp3', 'sounds/kick_ball3.mp3']);
+            // Reset kick impact tracking for this kick
+            this.minKickDistSq = Infinity;
+            this.kickImpactForceX = 0;
+            this.kickImpactForceY = 0;
+            
+            // --- Kick sound removed from here --- 
+            // // Play kick sound
+            // const kickSounds = ['KICK_1', 'KICK_2', 'KICK_3'];
+            // const randomKickSound = kickSounds[Math.floor(Math.random() * kickSounds.length)];
+            // audioManager.playSound(randomKickSound);
         }
     }
 
@@ -604,33 +594,24 @@ export class Player {
      * Makes the player jump if they are on the ground.
      */
     public jump() {
-        const onSurface = this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar || this.onOtherPlayerHead;
-        
-        if (onSurface) { 
-            // Apply jumpPower * jumpMultiplier
-            let effectiveJumpPower = this.jumpPower * this.jumpMultiplier; 
-            // Add slight boost if player is big
-            if (this.sizeMultiplier > 1.0) {
-                effectiveJumpPower *= 1.1; // Example: 10% jump boost when big
-            }
-            this.vy = effectiveJumpPower; 
-            this.isJumping = true; 
-            this.onOtherPlayerHead = false; // Reset flag if jumping off head
-            this.onLeftCrossbar = false; // Reset crossbar flag if jumping off it
-            this.onRightCrossbar = false; // Reset crossbar flag if jumping off it
-
-            // Debug logging
-            console.log(`Player jump: basePower=${this.jumpPower}, multiplier=${this.jumpMultiplier}, sizeFactor=${this.sizeMultiplier > 1.0 ? 1.1 : 1.0}, vy=${this.vy}`);
-
-            // Play jump sound
-            if (globalPlaySound) {
-                playSound(["sounds/jump1.mp3"]);
-            }
-
-            return true; // Jump was performed
+        let canJump = !this.isJumping && !this.isKicking && !this.isStunned && !this.isTumbling;
+        // Allow jumping off opponent's head or crossbar
+        if (this.onOtherPlayerHead || this.onLeftCrossbar || this.onRightCrossbar) {
+            canJump = !this.isKicking && !this.isStunned && !this.isTumbling; // Can jump even if technically "jumping" (falling)
         }
 
-        return false; // Jump was not performed
+        if (canJump) {
+            const effectiveJumpPower = this.jumpPower * this.jumpMultiplier;
+            this.vy = effectiveJumpPower; // Apply current jump power
+            this.isJumping = true;
+            this.hasJumpedThisPress = true; // For particle effect later
+            this.onOtherPlayerHead = false; // Reset flags after jumping off
+            this.onLeftCrossbar = false;
+            this.onRightCrossbar = false;
+
+            // Play jump sound
+            audioManager.playSound('JUMP_1');
+        }
     }
 
     // applyGravity(dt: number) { ... } // Incorporated into update

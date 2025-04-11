@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  root: 'game',
+  // root: 'game', // REMOVED: Vite runs from project root now
+  // base: './', // Explicitly set base path to current directory - REMOVED
   // Optional: configure server port, base path, etc. if needed
   server: {
     port: 5173, // Default Vite port

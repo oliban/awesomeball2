@@ -1,4 +1,5 @@
 import * as C from './Constants';
+import { audioManager } from './AudioManager'; // Import AudioManager
 
 const BALL_RADIUS = 15;
 const BALL_COLOR = '#FFFFFF';
@@ -42,11 +43,16 @@ export class Ball {
             return; // Skip all physics updates if frozen
         }
 
-        // Apply gravity
-        this.vy += C.GRAVITY * dt; // Gravity acceleration
+        // Store velocity before physics for sound checks
+        const vyBeforeUpdate = this.vy;
+        const vxBeforeUpdate = this.vx;
+        let soundPlayedThisFrame = false; // Prevent multiple sounds per frame
 
-        // Apply simple friction (adjust FRICTION constant if needed)
-        const frictionFactor = C.BALL_FRICTION; // Assuming applied per-frame effectively
+        // Apply gravity
+        this.vy += C.GRAVITY * dt;
+
+        // Apply simple friction
+        const frictionFactor = C.BALL_FRICTION;
         this.vx *= frictionFactor;
         this.vy *= frictionFactor;
 
@@ -54,32 +60,123 @@ export class Ball {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
 
-        // Update rotation based on horizontal movement
-        // Angular velocity = linear velocity / radius
+        // Update rotation
         this.rotation += (this.vx / this.radius) * dt;
-
-        // Apply rotation speed if defined (from GameManager bounce logic)
         this.rotation += this.rotationSpeed * dt;
+
+        // --- Environment Collisions --- 
 
         // Ground collision and bounce
         if (this.y + this.radius > C.GROUND_Y) {
             this.y = C.GROUND_Y - this.radius;
-            this.vy *= -C.BALL_BOUNCE; // Reverse and dampen vertical velocity
-            // Stronger ground friction on vx when bouncing
-            this.vx *= 0.9; // Apply extra friction factor directly
+            // Only bounce and play sound if moving downwards significantly
+            if (vyBeforeUpdate > 50) { // Threshold to prevent sound on rolling/resting
+                this.vy *= -C.BALL_BOUNCE;
+                this.vx *= 0.9; // Extra ground friction on bounce
+                if (!soundPlayedThisFrame) {
+                   audioManager.playSound('BALL_BOUNCE_1');
+                   soundPlayedThisFrame = true;
+                }
+            } else {
+                 this.vy = 0; // Stop vertical movement if resting/rolling
+            }
+            this.vx *= C.GROUND_FRICTION; // Apply normal ground friction anyway
         }
 
-        // Wall collisions and bounce
-        if (this.x - this.radius < 0) {
+        // Wall collisions and bounce (excluding goal areas for simplicity for now)
+        // TODO: Refine wall collision to not trigger inside goal mouths
+        if (this.x - this.radius < 0 && (this.y <= C.GOAL_Y_POS || this.y >= C.GROUND_Y)) {
             this.x = this.radius;
-            this.vx *= -C.BALL_BOUNCE; // Reverse and dampen horizontal velocity
-        } else if (this.x + this.radius > C.SCREEN_WIDTH) {
+             // Only bounce and play sound if moving left significantly
+            if (vxBeforeUpdate < -50) { 
+                this.vx *= -C.BALL_BOUNCE;
+                if (!soundPlayedThisFrame) {
+                    audioManager.playSound('WALL_HIT_1');
+                    soundPlayedThisFrame = true;
+                }
+            } else {
+                this.vx = 0;
+            }
+        } else if (this.x + this.radius > C.SCREEN_WIDTH && (this.y <= C.GOAL_Y_POS || this.y >= C.GROUND_Y)) {
             this.x = C.SCREEN_WIDTH - this.radius;
-            this.vx *= -C.BALL_BOUNCE; // Reverse and dampen horizontal velocity
+             // Only bounce and play sound if moving right significantly
+            if (vxBeforeUpdate > 50) {
+                this.vx *= -C.BALL_BOUNCE;
+                 if (!soundPlayedThisFrame) {
+                    audioManager.playSound('WALL_HIT_1');
+                    soundPlayedThisFrame = true;
+                 }
+            } else {
+                this.vx = 0;
+            }
         }
 
-        // TODO: Add collision with ceiling/top boundary if needed
-        // TODO: Add collision with goal posts later
+        // --- Goal Post/Crossbar Collisions --- 
+        // **Only check crossbars for now, based on reference logic**
+        const crossbarRects = [
+            // Left Goal Crossbar
+            { x: C.LEFT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
+            // Right Goal Crossbar
+            { x: C.RIGHT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
+        ];
+
+        for (const bar of crossbarRects) {
+             if (this.checkCircleRectCollision(this, bar)) {
+                console.log("Crossbar Collision!");
+                
+                const POST_BOUNCE = 0.8; // Use reference bounce factor
+
+                // Find closest point on bar to ball center
+                const closestX = Math.max(bar.x, Math.min(this.x, bar.x + bar.width));
+                const closestY = Math.max(bar.y, Math.min(this.y, bar.y + bar.height));
+                const distX = this.x - closestX;
+                const distY = this.y - closestY;
+                const distance = Math.sqrt(distX * distX + distY * distY) || 1;
+                const overlap = this.radius - distance;
+                
+                // Apply positional correction first
+                if (overlap > 0) {
+                    const correctionX = (distX / distance) * (overlap + 0.1);
+                    const correctionY = (distY / distance) * (overlap + 0.1);
+                    this.x += correctionX;
+                    this.y += correctionY;
+                }
+                
+                // --- Apply Reference Bounce Logic --- 
+                if (Math.abs(distX) > Math.abs(distY)) { // More horizontal collision (Side hit)
+                    this.vx = -this.vx * POST_BOUNCE; 
+                    this.vy *= 0.95; // Damp vertical slightly
+                } else { // More vertical collision
+                    if (distY < 0) { // Hit TOP of crossbar
+                        this.vy = -Math.abs(this.vy * POST_BOUNCE); // Bounce UP
+                        if (this.vy > -80) this.vy -= 80; // Ensure minimum bounce speed
+                    } else { // Hit BOTTOM of crossbar
+                        this.vy = -Math.abs(this.vy * POST_BOUNCE); // Bounce UP
+                        if (this.vy > -80) this.vy -= 80; // Ensure minimum bounce speed
+                        // Nudge slightly horizontally (optional, from ref)
+                        this.x += Math.sign(this.x - (bar.x + bar.width / 2)) * 1.0; 
+                    }
+                     this.vx *= 0.95; // Damp horizontal slightly on vertical hit
+                }
+                // --- End Reference Bounce Logic ---
+
+                if (!soundPlayedThisFrame) {
+                    audioManager.playSound('CROSSBAR_HIT');
+                    soundPlayedThisFrame = true;
+                }
+                break; // Handle one crossbar collision per frame
+            }
+        }
+    }
+
+    // --- Helper function for goal post collision --- 
+     private checkCircleRectCollision(circle: { x: number, y: number, radius: number }, rect: { x: number, y: number, width: number, height: number }): boolean {
+        const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width));
+        const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height));
+        const distanceX = circle.x - closestX;
+        const distanceY = circle.y - closestY;
+        const distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
+        return distanceSquared < (circle.radius * circle.radius);
     }
 
     draw(ctx: CanvasRenderingContext2D): void {

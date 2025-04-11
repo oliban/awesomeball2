@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generatedAt": "2025-04-11T07:54:01.531Z",
+    "generatedAt": "2025-04-11T13:08:36.980Z",
     "tasksAnalyzed": 10,
     "thresholdScore": 5,
     "projectName": "Your Project Name",
@@ -12,80 +12,80 @@
       "taskTitle": "Setup Project Structure and Game Loop",
       "complexityScore": 5,
       "recommendedSubtasks": 4,
-      "expansionPrompt": "Break down the project setup task into detailed subtasks covering project initialization, folder structure, canvas setup, game loop implementation, and input handling with specific technical requirements for each.",
-      "reasoning": "This task involves initial project setup which has moderate complexity due to TypeScript configuration, Canvas setup, and implementing the game loop. While straightforward for experienced developers, it requires careful attention to the architecture that will support the entire game."
+      "expansionPrompt": "Break down the project setup task into logical subtasks covering environment setup, file structure creation, game loop implementation, and input handling, with clear acceptance criteria for each.",
+      "reasoning": "This task involves initial project setup with moderate complexity. While TypeScript and Vite setup is straightforward, implementing the game loop and input handling requires more technical consideration. The task is well-defined with clear steps but warrants division into focused subtasks."
     },
     {
       "taskId": 2,
       "taskTitle": "Implement Core Entities and Basic Physics",
       "complexityScore": 7,
       "recommendedSubtasks": 5,
-      "expansionPrompt": "Detail the implementation of the Player and Ball classes with specific subtasks for rendering, physics properties, collision detection, and field elements, including technical specifications for each physics component.",
-      "reasoning": "This task has higher complexity as it involves implementing core game entities with physics. Creating the stick figure rendering, physics properties, and collision detection requires careful implementation to ensure the game mechanics work correctly. This forms the foundation for gameplay."
+      "expansionPrompt": "Divide the core entities implementation into subtasks that separately address player implementation, ball physics, rendering systems, collision detection, and field/goal setup, with each subtask having clear deliverables and test scenarios.",
+      "reasoning": "This task involves implementing fundamental game physics and multiple entity classes with their own rendering and behavior. The collision detection and physics implementation add significant complexity, requiring careful planning and incremental implementation."
     },
     {
       "taskId": 3,
       "taskTitle": "Implement Core Gameplay Mechanics",
       "complexityScore": 8,
       "recommendedSubtasks": 5,
-      "expansionPrompt": "Break down the implementation of core gameplay mechanics into detailed subtasks covering kicking physics, goal detection logic, game state management, and position reset mechanisms with specific algorithms for each.",
-      "reasoning": "This task has high complexity as it implements the core gameplay mechanics including kicking, scoring, and game state management. The physics calculations for kicking and the state transitions require careful implementation to ensure smooth gameplay."
+      "expansionPrompt": "Create subtasks for the gameplay mechanics that separately address kicking mechanics with physics calculations, goal detection and scoring logic, game state management system, position reset functionality, and match/game win conditions.",
+      "reasoning": "This task introduces complex gameplay mechanics including physics interactions between entities, state management, and scoring systems. The kicking mechanics especially require careful implementation of physics calculations and timing, making this a high-complexity task."
     },
     {
       "taskId": 4,
       "taskTitle": "Implement Advanced Player Animations and Physics",
       "complexityScore": 9,
       "recommendedSubtasks": 5,
-      "expansionPrompt": "Detail the implementation of advanced player animations and physics with specific subtasks for animation states, headbutt mechanics, collision physics, and enhanced ball physics with mathematical formulas for each component.",
-      "reasoning": "This task has very high complexity due to the detailed animations and advanced physics interactions. Implementing walk cycles, kick animations, and player-player collisions requires sophisticated mathematics and careful state management."
+      "expansionPrompt": "Break down the advanced animations and physics into subtasks covering animation system architecture, specific animation implementations (walk cycle, jump, kick), headbutt mechanics, player-player collision physics, and enhanced ball physics.",
+      "reasoning": "This task involves sophisticated physics interactions and animation systems. The detailed stick figure animations with multiple states and the complex collision physics between multiple entities represent significant technical challenges requiring careful implementation."
     },
     {
       "taskId": 5,
       "taskTitle": "Implement UI and Scoreboard",
       "complexityScore": 6,
       "recommendedSubtasks": 4,
-      "expansionPrompt": "Break down the UI implementation into detailed subtasks covering scoreboard design, game message system, screen transitions, and visual indicators with specific rendering requirements for each element.",
-      "reasoning": "This task has moderate complexity focused on UI elements. While not as mathematically complex as physics, it requires careful design and implementation to ensure the UI is responsive, informative, and visually appealing."
+      "expansionPrompt": "Divide the UI implementation into subtasks for the core UI architecture, scoreboard functionality, game messaging system, and special screens (welcome, game over, trophy), with each having clear visual and functional requirements.",
+      "reasoning": "While less complex than the physics tasks, this UI implementation still requires careful design and integration with the game state. The various screens and dynamic elements like score flashing and off-screen indicators add moderate complexity."
     },
     {
       "taskId": 6,
       "taskTitle": "Implement Basic Power-up System",
       "complexityScore": 7,
       "recommendedSubtasks": 4,
-      "expansionPrompt": "Detail the implementation of the power-up system with specific subtasks for the spawning mechanism, collision detection, core power-up effects, and visual indicators with technical specifications for each component.",
-      "reasoning": "This task has significant complexity as it introduces a new game system with multiple power-up types. The spawning system, collision detection, and various power-up effects require careful implementation and integration with existing systems."
+      "expansionPrompt": "Create subtasks for the power-up system covering the core power-up architecture, spawning mechanism with parachute physics, collision and activation logic, and implementation of the basic power-up effects with their visual indicators.",
+      "reasoning": "This task introduces a new system with its own physics (parachute), collision detection, and temporary effect management. The various power-ups have different effects on gameplay, requiring careful integration with existing systems."
     },
     {
       "taskId": 7,
       "taskTitle": "Implement Particle System and Audio",
       "complexityScore": 7,
       "recommendedSubtasks": 4,
-      "expansionPrompt": "Break down the particle system and audio implementation into detailed subtasks covering particle physics, different particle types, audio loading/playback, and event triggering with specific technical requirements for each component.",
-      "reasoning": "This task has substantial complexity as it implements two separate systems that enhance game feel. The particle system requires physics calculations for realistic movement, while the audio system needs careful event handling and sound management."
+      "expansionPrompt": "Break down the particle and audio systems into subtasks covering particle system architecture, specific particle effect implementations, audio system architecture with loading/playback, and integration of audio with game events.",
+      "reasoning": "Creating flexible particle and audio systems requires careful architecture to handle various effects and sounds efficiently. Both systems need to integrate with multiple game events and maintain performance, adding significant complexity."
     },
     {
       "taskId": 8,
       "taskTitle": "Implement Advanced Power-ups",
       "complexityScore": 8,
       "recommendedSubtasks": 5,
-      "expansionPrompt": "Detail the implementation of advanced power-ups with specific subtasks for each complex power-up type, including technical specifications for their unique physics, visual effects, and gameplay impacts.",
-      "reasoning": "This task has high complexity due to the implementation of numerous power-ups with complex behaviors. The rocket launcher and sword power-ups in particular require sophisticated collision detection and physics calculations, plus testing for interactions between power-ups."
+      "expansionPrompt": "Divide the advanced power-ups implementation into subtasks for the Rocket Launcher system, Sword mechanics with line collision, remaining power-ups implementation grouped by complexity, interaction testing between power-ups, and balancing/tuning of effects.",
+      "reasoning": "The advanced power-ups introduce complex new mechanics like projectiles, explosions, and line segment collision. Testing interactions between power-ups adds another layer of complexity, as combinations could lead to unexpected behaviors."
     },
     {
       "taskId": 9,
       "taskTitle": "Implement Weather and Time of Day Systems",
       "complexityScore": 7,
       "recommendedSubtasks": 4,
-      "expansionPrompt": "Break down the weather and time of day systems into detailed subtasks covering weather selection logic, physics modifications, particle effects, and visual transitions with specific algorithms for each component.",
-      "reasoning": "This task has significant complexity as it implements environmental systems that affect gameplay. The weather effects modify physics properties, while the time of day system requires smooth visual transitions and performance considerations."
+      "expansionPrompt": "Create subtasks for the weather and time systems covering weather system architecture, specific weather effect implementations with physics modifications, time of day cycle with visual transitions, and performance optimization for these effects.",
+      "reasoning": "This task involves creating systems that affect global game properties like gravity and visuals. The dynamic nature of these systems and their interaction with existing physics add complexity, while performance considerations for particle-heavy effects require careful implementation."
     },
     {
       "taskId": 10,
       "taskTitle": "Final Polish, Balancing and Optimization",
       "complexityScore": 8,
       "recommendedSubtasks": 5,
-      "expansionPrompt": "Detail the final polish phase with specific subtasks for physics tuning, power-up balancing, performance optimization, and bug fixing with measurable criteria for each component.",
-      "reasoning": "This task has high complexity due to its comprehensive nature across all game systems. Balancing gameplay, optimizing performance, and fixing bugs requires deep understanding of all implemented systems and careful testing to ensure a polished final product."
+      "expansionPrompt": "Break down the final polish phase into subtasks covering gameplay testing methodology, physics constant tuning with specific targets, power-up balancing with metrics, rendering and collision optimizations, and final bug fixing with a verification process.",
+      "reasoning": "This task encompasses a wide range of optimization and balancing work across all game systems. The iterative nature of tuning, the need for comprehensive testing, and the technical complexity of performance optimizations make this a high-complexity task requiring systematic approach."
     }
   ]
 }

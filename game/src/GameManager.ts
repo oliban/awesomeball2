@@ -1,18 +1,13 @@
 import * as C from './Constants';
 import { InputHandler } from './InputHandler';
-import { Player, setPlayerSoundFunction } from './Player';
+import { Player } from './Player';
 import { Ball } from './Ball';
 import { UIManager, UIGameState } from './UIManager';
 import { PowerupManager } from './PowerupManager';
 import { PowerupType } from './Powerup';
 import { ParticleSystem } from './ParticleSystem';
 import { Powerup } from './Powerup';
-
-// Dummy sound function if needed by Player constructor/methods
-const dummyPlaySound = (soundUrlArray: string[]) => { 
-    // console.log("Sound play ignored for now:", soundUrlArray); 
-};
-setPlayerSoundFunction(dummyPlaySound); // Set the dummy function
+import { audioManager } from './AudioManager';
 
 // Add match point limit to constants if not already there
 const MATCH_POINT_LIMIT = 5; // Example limit
@@ -127,20 +122,33 @@ export class GameManager {
         // Check if ball is within goal height
         if (this.ball.y > C.GOAL_Y_POS && this.ball.y < C.GROUND_Y) { 
             let goalScored = false;
-            // Goal for Player 2 (Ball crossed left goal line)
-            if (this.ball.x - this.ball.radius < C.GOAL_LINE_X_LEFT) {
+            let scorer: number | null = null; // Track which player scored (1 or 2)
+
+            // Goal for Player 2 (Ball crossed left goal line - Use LEFT_GOAL_X)
+            if (this.ball.x - this.ball.radius < C.LEFT_GOAL_X) { // Updated constant
                 console.log("GOAL P2!");
                 this.player2Score++;
                 goalScored = true;
+                scorer = 2;
             } 
-            // Goal for Player 1 (Ball crossed right goal line)
-            else if (this.ball.x + this.ball.radius > C.GOAL_LINE_X_RIGHT) {
+            // Goal for Player 1 (Ball crossed right goal line - Check against RIGHT_GOAL_X + GOAL_WIDTH)
+            else if (this.ball.x + this.ball.radius > (C.RIGHT_GOAL_X + C.GOAL_WIDTH)) { // Updated check
                 console.log("GOAL P1!");
                 this.player1Score++;
                 goalScored = true;
+                scorer = 1;
             }
             if (goalScored) {
-                // TODO: Add goal sound
+                // Play goal sound based on scorer
+                if (scorer === 1) {
+                    // TODO: Randomize between PLAYER1_GOAL_1, 2, 3?
+                    audioManager.playSound('PLAYER1_GOAL_1');
+                } else if (scorer === 2) {
+                    // TODO: Randomize between PLAYER2_GOAL_1, 2, 3?
+                    audioManager.playSound('PLAYER2_GOAL_1');
+                }
+                // TODO: Add general goal effects sound?
+
                 this.particleSystem.emit('goal', this.ball.x, this.ball.y, 50); // Emit goal particles
                 this.currentState = C.GameState.GOAL_SCORED;
                 this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
@@ -199,7 +207,8 @@ export class GameManager {
                 if (!this.player1.isTumbling) this.player1.startTumble();
                 if (!this.player2.isTumbling) this.player2.startTumble(); 
 
-                 console.log("Player-Player Body Collision");
+                console.log("Player-Player Body Collision");
+                audioManager.playSound('PLAYER_BUMP_1'); // Play player bump sound
             }
             // TODO: Add vertical separation/bounce if needed?
         }
@@ -241,6 +250,12 @@ export class GameManager {
                     if (distSq < kickRadiusSq) {
                         console.log("Kick Connect!");
                         
+                        // --- Play kick sound here ---
+                        const kickSounds = ['KICK_1', 'KICK_2', 'KICK_3'];
+                        const randomKickSound = kickSounds[Math.floor(Math.random() * kickSounds.length)];
+                        audioManager.playSound(randomKickSound);
+                        // -------------------------
+
                         // Calculate Momentum Boost (based on old logic)
                         const momentumScaleFactor = 0.4; // Percentage of player velocity to add
                         const momentumBoostVX = player.vx * momentumScaleFactor; 
@@ -269,74 +284,65 @@ export class GameManager {
                 }
             }
 
-            // --- Player-Ball Body/Head Collision ---
-            // Simple Circle vs Circle (Head)
+            // --- Player-Ball Headbutt Collision ---
             const headCircle = player.getHeadCircle();
             const dxHead = this.ball.x - headCircle.x;
             const dyHead = this.ball.y - headCircle.y;
             const distSqHead = dxHead * dxHead + dyHead * dyHead;
-            const radiiSumHeadSq = (this.ball.radius + headCircle.radius) * (this.ball.radius + headCircle.radius);
+            const headRadius = headCircle.radius + this.ball.radius + 5; // Add some buffer
+            const headRadiusSq = headRadius * headRadius;
 
-            if (distSqHead < radiiSumHeadSq) {
-                console.log("Head Collision");
-                const distHead = Math.sqrt(distSqHead) || 1;
-                const overlapHead = (this.ball.radius + headCircle.radius) - distHead;
+            if (distSqHead < headRadiusSq && !player.isKicking) { // Ensure not kicking simultaneously
+                console.log("Headbutt Connect!");
+                // Apply headbutt force (more vertical)
+                const headbuttForceX = C.BASE_KICK_FORCE_X * player.facingDirection * 0.6; // Less horizontal force
+                const headbuttForceY = C.BASE_KICK_FORCE_Y * 1.5; // More vertical force
                 
-                // --- Positional Correction --- 
-                const correctionFactor = 1.05; 
-                const pushXHead = (dxHead / distHead) * overlapHead * correctionFactor;
-                const pushYHead = (dyHead / distHead) * overlapHead * correctionFactor;
-                this.ball.x += pushXHead; 
-                this.ball.y += pushYHead;
+                // Factor in player velocity slightly
+                const momentumBoostVX = player.vx * 0.3;
+                const momentumBoostVY = player.vy * 0.3; 
 
-                // --- Velocity Reflection (Bounce) --- 
-                const normX = dxHead / distHead;
-                const normY = dyHead / distHead;
-                const dotProduct = this.ball.vx * normX + this.ball.vy * normY;
-                
-                // Only reflect if ball is moving towards the head
-                if (dotProduct < 0) {
-                    const impulseMagnitude = -(1 + C.BALL_BOUNCE * C.HEADBUTT_BOUNCE_FACTOR) * dotProduct;
-                    this.ball.vx += impulseMagnitude * normX;
-                    this.ball.vy += impulseMagnitude * normY;
-                }
-                // TODO: Add headbutt sound
-
-                continue; // Prioritize headbutt over body if overlapping both
+                this.ball.vx = headbuttForceX + momentumBoostVX;
+                this.ball.vy = headbuttForceY + momentumBoostVY;
+                kickAppliedThisFrame = true; // Prevent other collisions for this frame
+                audioManager.playSound('HEADBUTT_1'); // Play headbutt sound
             }
 
-            // Simple Rect vs Circle (Body)
-            const bodyRect = player.getBodyRect();
-            const closestX = Math.max(bodyRect.x, Math.min(this.ball.x, bodyRect.x + bodyRect.width));
-            const closestY = Math.max(bodyRect.y, Math.min(this.ball.y, bodyRect.y + bodyRect.height));
-            const dxBody = this.ball.x - closestX;
-            const dyBody = this.ball.y - closestY;
-            const distSqBody = dxBody * dxBody + dyBody * dyBody;
+            // --- Player-Ball Body Collision ---
+            // Check only if kick/headbutt didn't connect this frame
+            if (!kickAppliedThisFrame) {
+                const bodyRect = player.getBodyRect(); // Simple rect for body
+                // Check collision between ball circle and player body rect
+                if (this.checkCircleRectCollision(this.ball, bodyRect)) {
+                    console.log("Player-Ball Body Collision");
 
-            if (distSqBody < this.ball.radius * this.ball.radius) {
-                console.log("Body Collision");
-                const distBody = Math.sqrt(distSqBody) || 1;
-                const overlapBody = this.ball.radius - distBody;
-                
-                // --- Positional Correction ---
-                const correctionFactorBody = 1.05;
-                const pushXBody = (dxBody / distBody) * overlapBody * correctionFactorBody;
-                const pushYBody = (dyBody / distBody) * overlapBody * correctionFactorBody;
-                this.ball.x += pushXBody;
-                this.ball.y += pushYBody;
+                    // Simple positional correction: Push ball out along axis of least penetration
+                    const closestX = Math.max(bodyRect.x, Math.min(this.ball.x, bodyRect.x + bodyRect.width));
+                    const closestY = Math.max(bodyRect.y, Math.min(this.ball.y, bodyRect.y + bodyRect.height));
+                    const distToClosestX = this.ball.x - closestX;
+                    const distToClosestY = this.ball.y - closestY;
+                    const distToClosestSq = (distToClosestX * distToClosestX) + (distToClosestY * distToClosestY);
 
-                // --- Velocity Reflection (Bounce) ---
-                const normXBody = dxBody / distBody;
-                const normYBody = dyBody / distBody;
-                const dotProductBody = this.ball.vx * normXBody + this.ball.vy * normYBody;
+                    if (distToClosestSq < this.ball.radius * this.ball.radius) {
+                        const dist = Math.sqrt(distToClosestSq);
+                        const overlap = this.ball.radius - dist;
+                        if (dist > 0) {
+                            const pushX = (distToClosestX / dist) * overlap;
+                            const pushY = (distToClosestY / dist) * overlap;
+                            this.ball.x += pushX;
+                            this.ball.y += pushY;
+                        }
+                        
+                        // Apply some bounce based on relative velocity (simplified)
+                        const relativeVx = this.ball.vx - player.vx;
+                        const relativeVy = this.ball.vy - player.vy;
+                        const bounceFactor = 0.5;
+                        this.ball.vx = player.vx + -relativeVx * bounceFactor;
+                        this.ball.vy = player.vy + -relativeVy * bounceFactor;
 
-                // Only reflect if ball is moving towards the body
-                if (dotProductBody < 0) {
-                    const impulseMagnitudeBody = -(1 + C.BALL_BOUNCE) * dotProductBody;
-                    this.ball.vx += impulseMagnitudeBody * normXBody;
-                    this.ball.vy += impulseMagnitudeBody * normYBody;
+                        audioManager.playSound('BODY_HIT_1'); // Play body hit sound
+                    }
                 }
-                // TODO: Add body hit sound
             }
         }
 
@@ -373,6 +379,19 @@ export class GameManager {
                 this.particleSystem.emit('dust', ball.x, ball.y, 12, {color: '#A0522D'}); // Increased count
             }
         }
+
+        // --- Ball-Goal Collision (Simple check, refine later) ---
+        // Check if ball center is roughly within goal Y bounds
+        if (ball.y > C.GOAL_Y_POS && ball.y < C.GROUND_Y) {
+            // Check if ball has crossed the goal line horizontally
+            if (ball.x - ball.radius < C.LEFT_GOAL_X || ball.x + ball.radius > (C.RIGHT_GOAL_X + C.GOAL_WIDTH)) { 
+                 console.log("Ball crossed goal line - potential goal? Needs checkGoal logic.");
+                // Basic containment: Prevent ball going too far past goal line 
+                // (checkGoal handles scoring and reset)
+                // ball.x = (ball.x < C.SCREEN_WIDTH / 2) ? C.LEFT_GOAL_X + ball.radius : (C.RIGHT_GOAL_X + C.GOAL_WIDTH) - ball.radius; // Updated constants
+                // ball.vx *= -0.5; // Reduce velocity slightly 
+            }
+        }
     }
 
     // Helper function for simple rectangle collision
@@ -405,6 +424,25 @@ export class GameManager {
             feetY <= headCenterY + 5 && // Allow slightly below center
             feetPlayer.vy >= 0 
         );
+    }
+
+    /**
+     * Checks for collision between a circle and a rectangle.
+     * @param circle - Object with x, y, radius properties.
+     * @param rect - Object with x, y, width, height properties.
+     */
+    private checkCircleRectCollision(circle: { x: number, y: number, radius: number }, rect: { x: number, y: number, width: number, height: number }): boolean {
+        // Find the closest point to the circle within the rectangle
+        const closestX = Math.max(rect.x, Math.min(circle.x, rect.x + rect.width));
+        const closestY = Math.max(rect.y, Math.min(circle.y, rect.y + rect.height));
+
+        // Calculate the distance between the circle's center and this closest point
+        const distanceX = circle.x - closestX;
+        const distanceY = circle.y - closestY;
+
+        // If the distance is less than the circle's radius, an overlap occurs
+        const distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
+        return distanceSquared < (circle.radius * circle.radius);
     }
 
     private applyPowerup(player: Player, type: PowerupType): void {
@@ -639,20 +677,75 @@ export class GameManager {
     }
 
     private drawGoals(): void {
-        this.ctx.fillStyle = C.GOAL_COLOR;
-        this.ctx.strokeStyle = C.BLACK;
+        const goalColor = C.GOAL_COLOR; // Use constant
+        this.ctx.fillStyle = goalColor;
+        this.ctx.strokeStyle = C.BLACK; // Use constant
         this.ctx.lineWidth = 2;
 
-        // Simple rectangle goals for now
-        const goalWidth = 10; // Visual width of the goal post line
+        // Define goal structure using constants - ONLY CROSSBARS for drawing initially
+        const crossbars = [
+            // Left Goal Crossbar
+            { x: C.LEFT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
+            // Right Goal Crossbar
+            { x: C.RIGHT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
+        ];
 
-        // Left Goal
-        this.ctx.fillRect(C.GOAL_LINE_X_LEFT - goalWidth, C.GOAL_Y_POS, goalWidth, C.GOAL_HEIGHT);
-        this.ctx.strokeRect(C.GOAL_LINE_X_LEFT - goalWidth, C.GOAL_Y_POS, goalWidth, C.GOAL_HEIGHT);
+        // Draw Nets First (so posts are drawn over them)
+        this.ctx.strokeStyle = 'rgba(240, 240, 240, 0.8)'; // Lighter grey/whiter net
+        this.ctx.lineWidth = 1; // Thinner lines for net
+        const netSpacing = 10;
 
-        // Right Goal
-        this.ctx.fillRect(C.GOAL_LINE_X_RIGHT, C.GOAL_Y_POS, goalWidth, C.GOAL_HEIGHT);
-        this.ctx.strokeRect(C.GOAL_LINE_X_RIGHT, C.GOAL_Y_POS, goalWidth, C.GOAL_HEIGHT);
-        // TODO: Add crossbars and nets later
+        // Left Goal Net
+        const leftNetTop = C.GOAL_Y_POS;
+        const leftNetBottom = C.GROUND_Y;
+        for (let y = leftNetTop; y < leftNetBottom; y += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(C.LEFT_GOAL_X, y);
+            this.ctx.lineTo(C.LEFT_GOAL_X + C.GOAL_WIDTH, y);
+            this.ctx.stroke();
+        }
+        for (let x = C.LEFT_GOAL_X; x < C.LEFT_GOAL_X + C.GOAL_WIDTH; x += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, leftNetTop);
+            this.ctx.lineTo(x, leftNetBottom);
+            this.ctx.stroke();
+        }
+
+        // Right Goal Net
+        const rightNetTop = C.GOAL_Y_POS;
+        const rightNetBottom = C.GROUND_Y;
+        for (let y = rightNetTop; y < rightNetBottom; y += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(C.RIGHT_GOAL_X, y);
+            this.ctx.lineTo(C.RIGHT_GOAL_X + C.GOAL_WIDTH, y);
+            this.ctx.stroke();
+        }
+        for (let x = C.RIGHT_GOAL_X; x < C.RIGHT_GOAL_X + C.GOAL_WIDTH; x += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, rightNetTop);
+            this.ctx.lineTo(x, rightNetBottom);
+            this.ctx.stroke();
+        }
+
+        // Draw Crossbars
+        this.ctx.fillStyle = goalColor;
+        this.ctx.strokeStyle = C.BLACK;
+        this.ctx.lineWidth = 2;
+        for (const rect of crossbars) {
+            this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+            this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+        }
+
+        // Draw Back Poles (Vertical posts at the goal line)
+        const backPoles = [
+            // Left Goal Back Pole
+            { x: C.LEFT_GOAL_X, y: C.GOAL_Y_POS, width: C.GOAL_POST_THICKNESS, height: C.GOAL_HEIGHT },
+            // Right Goal Back Pole
+            { x: C.SCREEN_WIDTH - C.GOAL_POST_THICKNESS, y: C.GOAL_Y_POS, width: C.GOAL_POST_THICKNESS, height: C.GOAL_HEIGHT },
+        ];
+        for (const pole of backPoles) {
+            this.ctx.fillRect(pole.x, pole.y, pole.width, pole.height);
+            this.ctx.strokeRect(pole.x, pole.y, pole.width, pole.height);
+        }
     }
 } 
