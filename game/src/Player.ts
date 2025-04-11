@@ -44,6 +44,8 @@ const KICK_THIGH_FOLLOW_REL = Math.PI / 1.5; // Keep angle *forward* MORE from v
 const KICK_SHIN_WINDUP_ANGLE = Math.PI * 0.6; // Bend shin back relative to thigh
 const KICK_SHIN_IMPACT_ANGLE = -Math.PI * 0.15; // Extend shin more at impact
 const KICK_DURATION_SECONDS = 0.45; // Faster duration again (was 0.9)
+const KICK_IMPACT_START = 0.15; // Widened impact phase start (was 0.25)
+const KICK_IMPACT_END = 0.70;   // Widened impact phase end (was 0.50)
 
 // NEW Shoe/Foot Constants
 const SHOE_LENGTH = 14; // Increased size
@@ -75,62 +77,62 @@ function easeOutQuad(t: number): number { return t * (2 - t); }
 
 export class Player {
     // Position and Velocity
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    baseY: number; // Ground level or initial Y
+    public x: number;
+    public y: number;
+    public vx: number;
+    public vy: number;
+    public baseY: number; // Ground level or initial Y
 
     // State
-    isJumping: boolean;
-    isKicking: boolean;
-    kickTimer: number;
-    kickDuration: number = KICK_DURATION_SECONDS; 
-    walkCycleTimer: number;
-    facingDirection: 1 | -1; // 1 for right, -1 for left
-    onOtherPlayerHead: boolean = false;
-    onLeftCrossbar: boolean;
-    onRightCrossbar: boolean;
-    isStunned: boolean;
-    stunTimer: number;
-    isTumbling: boolean;
-    tumbleTimer: number;
-    rotationAngle: number; // For tumbling animation
-    rotationVelocity: number; // For tumbling animation
+    public isJumping: boolean;
+    public isKicking: boolean;
+    public kickTimer: number;
+    public kickDuration: number = KICK_DURATION_SECONDS; 
+    public walkCycleTimer: number;
+    public facingDirection: number; // 1 for right, -1 for left
+    public onOtherPlayerHead: boolean = false;
+    public onLeftCrossbar: boolean;
+    public onRightCrossbar: boolean;
+    public isStunned: boolean;
+    public stunTimer: number;
+    public isTumbling: boolean;
+    public tumbleTimer: number;
+    public rotationAngle: number; // For tumbling animation
+    public rotationVelocity: number; // For tumbling animation
 
     // Properties for tracking kick impact
-    minKickDistSq: number = Infinity;
-    kickImpactForceX: number = 0;
-    kickImpactForceY: number = 0;
+    public minKickDistSq: number = Infinity;
+    public kickImpactForceX: number = 0;
+    public kickImpactForceY: number = 0;
 
     // Appearance & Identification
-    teamColor: string; // e.g., '#FFFFFF' or 'rgb(255, 255, 255)'
-    teamAccent: string;
-    eyeColor: string;
+    public teamColor: string; // e.g., '#FFFFFF' or 'rgb(255, 255, 255)'
+    public teamAccent: string;
+    public eyeColor: string;
     // Consider adding a unique ID if needed later for multiple players
     // id: number;
 
     // Base Size Attributes (adjust values based on reference)
-    readonly baseHeadRadius: number = 12;
-    readonly baseTorsoLength: number = 36;
-    readonly baseLimbWidth: number = 10;
-    readonly baseArmLength: number = 24;
-    readonly baseLegLength: number = 32;
+    public readonly baseHeadRadius: number = 12;
+    public readonly baseTorsoLength: number = 36;
+    public readonly baseLimbWidth: number = 10;
+    public readonly baseArmLength: number = 24;
+    public readonly baseLegLength: number = 32;
 
     // Current Size Attributes (affected by powerups)
-    headRadius: number;
-    torsoLength: number;
-    limbWidth: number;
-    armLength: number;
-    legLength: number;
+    public headRadius: number;
+    public torsoLength: number;
+    public limbWidth: number;
+    public armLength: number;
+    public legLength: number;
 
     // Animation Angles (radians)
-    leftThighAngle: number = STAND_ANGLE;
-    rightThighAngle: number = STAND_ANGLE;
-    leftShinAngle: number = 0;
-    rightShinAngle: number = 0;
-    leftArmAngle: number = STAND_ANGLE;
-    rightArmAngle: number = STAND_ANGLE;
+    public leftThighAngle: number = STAND_ANGLE;
+    public rightThighAngle: number = STAND_ANGLE;
+    public leftShinAngle: number = 0;
+    public rightShinAngle: number = 0;
+    public leftArmAngle: number = STAND_ANGLE;
+    public rightArmAngle: number = STAND_ANGLE;
     // Maybe separate upper/lower arm/leg angles later if needed for more complex animation
 
     // Joint Positions (calculated during update/draw)
@@ -141,27 +143,27 @@ export class Player {
     // ... and so on for knees, hands, feet
 
     // Powerups (using a Map for flexibility)
-    activePowerups: Map<string, number> = new Map(); // Key: PowerupType, Value: Duration/Magnitude/Ammo
-    isFlying: boolean = false;
-    isBig: boolean = false;
-    isShrunk: boolean = false;
-    isEnormousHead: boolean = false;
-    isControlsReversed: boolean = false;
-    isSword: boolean = false;
-    swordAngle: number = 0;
+    public activePowerups: Map<string, number> = new Map(); // Key: PowerupType, Value: Duration/Magnitude/Ammo
+    public isFlying: boolean = false;
+    public isBig: boolean = false;
+    public isShrunk: boolean = false;
+    public isEnormousHead: boolean = false;
+    public isControlsReversed: boolean = false;
+    public isSword: boolean = false;
+    public swordAngle: number = 0;
 
     // Physics Parameters (can be modified by powerups)
-    jumpPower: number; // Set based on BASE_JUMP_POWER
-    playerSpeed: number; // Set based on BASE_PLAYER_SPEED
-    gravity: number; // Store the gravity value affecting this player
+    public jumpPower: number; // Set based on BASE_JUMP_POWER
+    public playerSpeed: number; // Set based on BASE_PLAYER_SPEED
+    public gravity: number; // Store the gravity value affecting this player
 
     constructor(
         x: number,
         y: number,
-        facing: 1 | -1 = 1,
-        teamColor: string = '#FFFFFF',
-        teamAccent: string = '#000000',
-        eyeColor: string = '#000000',
+        facing: number,
+        teamColor: string,
+        teamAccent: string,
+        eyeColor: string,
         gravity: number, // Pass gravity in
         jumpPower: number, // Pass base jump power
         playerSpeed: number // Pass base speed
@@ -211,7 +213,7 @@ export class Player {
      * Draws the player stick figure on the canvas.
      * Assumes this.y is the feet position.
      */
-    draw(ctx: CanvasRenderingContext2D) {
+    public draw(ctx: CanvasRenderingContext2D) {
         ctx.save(); // Save context state
 
         // --- Define Base Joint Positions --- 
@@ -310,7 +312,7 @@ export class Player {
         // 6. Shoes (Draw AFTER legs)
         ctx.fillStyle = this.teamAccent; // Use accent color for shoes
         // Function to draw a rotated rectangle (shoe)
-        const drawShoe = (footPos: Point, facingDir: 1 | -1) => {
+        const drawShoe = (footPos: Point, facingDir: number) => {
             // Shoe angle is always horizontal based on facing direction
             const finalShoeAngle = (facingDir === 1) ? 0 : Math.PI; // 0 for right, PI for left
             
@@ -335,7 +337,7 @@ export class Player {
      * @param groundY Ground Y coordinate
      * @param screenWidth Screen width
      */
-    update(dt: number, groundY: number, screenWidth: number) { // Keep params for now, use constants if needed
+    public update(dt: number, groundY: number, screenWidth: number) { // Keep params for now, use constants if needed
         // Reset flags
         this.onOtherPlayerHead = false;
         this.onLeftCrossbar = false; // Reset crossbar flags
@@ -544,46 +546,43 @@ export class Player {
     /**
      * Initiates the kick action if the player is not already kicking.
      */
-    startKick() {
-        // Add checks for stunned/tumbling later
-        if (!this.isKicking) {
+    public startKick() {
+        if (!this.isKicking && !this.isStunned && !this.isTumbling) {
             this.isKicking = true;
-            this.kickTimer = 0; // Reset kick timer
-            this.vx = 0; // Stop horizontal movement during kick (optional, like reference?)
-            // Reset kick impact tracking
-            this.minKickDistSq = Infinity;
-            this.kickImpactForceX = 0;
-            this.kickImpactForceY = 0;
-            
-            // Play kick sound
-            if (globalPlaySound) {
-                playSound(["sounds/kick_ball1.mp3", "sounds/kick_ball2.mp3", "sounds/kick_ball3.mp3"]);
-            }
+            this.kickTimer = 0;
+            // Optionally stop horizontal movement during kick
+            // this.vx = 0; 
+            // Play kick sound (Ensure sound logic exists or is handled elsewhere)
+            // playSound(['sounds/kick_ball1.mp3', 'sounds/kick_ball2.mp3', 'sounds/kick_ball3.mp3']);
         }
     }
 
     /**
      * Makes the player jump if they are on the ground.
      */
-    jump() {
-        // Allow jump if on the ground OR on the other player's head
-        if (!this.isJumping || this.onOtherPlayerHead) {
-            // Applicera jumpPower (negativ för uppåt rörelse)
+    public jump() {
+        // Allow jump only if on a valid surface (ground, crossbar, other player's head)
+        const onSurface = this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar || this.onOtherPlayerHead;
+        
+        if (onSurface) { // Only allow jump if on a surface
+            // Apply jumpPower (negative for upward movement)
             this.vy = this.jumpPower;
-            this.isJumping = true;
-            this.onOtherPlayerHead = false; // No longer on head once jumped
-            
+            this.isJumping = true; // Set state to jumping (used for animation/landing logic)
+            this.onOtherPlayerHead = false; // Reset flag if jumping off head
+            this.onLeftCrossbar = false; // Reset crossbar flag if jumping off it
+            this.onRightCrossbar = false; // Reset crossbar flag if jumping off it
+
             // Debug logging
             console.log(`Player jump: vy=${this.vy}, jumpPower=${this.jumpPower}`);
-            
-            // Play jump sound (only play if we actually jumped)
+
+            // Play jump sound
             if (globalPlaySound) {
                 playSound(["sounds/jump1.mp3"]);
             }
-            
+
             return true; // Jump was performed
         }
-        
+
         return false; // Jump was not performed
     }
 
@@ -596,13 +595,13 @@ export class Player {
     // etc.
 
     // --- Collision Shape Getters ---
-    getHeadCircle(): { x: number, y: number, radius: number } {
+    public getHeadCircle(): { x: number, y: number, radius: number } {
         const neckPos: Point = { x: this.x, y: this.y - this.legLength - this.torsoLength };
         const headCenter: Point = { x: neckPos.x, y: neckPos.y - this.headRadius };
         return { x: headCenter.x, y: headCenter.y, radius: this.headRadius };
     }
 
-    getBodyRect(): { x: number, y: number, width: number, height: number } {
+    public getBodyRect(): { x: number, y: number, width: number, height: number } {
         // Approximate body rectangle from hips down to feet
         const hipY = this.y - this.legLength;
         const height = this.legLength + this.torsoLength; // Torso + Legs
@@ -619,7 +618,7 @@ export class Player {
     /**
      * Starts the tumble animation.
      */
-    startTumble() {
+    public startTumble() {
         if (!this.isTumbling) { // Prevent re-triggering mid-tumble
             this.isTumbling = true;
             // TODO: Define tumble duration constant
@@ -635,7 +634,7 @@ export class Player {
     }
 
     // Helper to get the absolute position of the foot (end of shin)
-    getFootPosition(isRightLeg: boolean): { x: number, y: number } {
+    public getFootPosition(isRightLeg: boolean): { x: number, y: number } {
         const thighAngle = isRightLeg ? this.rightThighAngle : this.leftThighAngle;
         const shinAngle = isRightLeg ? this.rightShinAngle : this.leftShinAngle;
         const thighLength = this.legLength * 0.5;
@@ -656,59 +655,41 @@ export class Player {
      * Gets the approximate position of the kicking foot's tip during the impact phase.
      * Returns null if not currently kicking.
      */
-    getKickImpactPoint(): Point | null {
+    public getKickImpactPoint(): Point | null {
         if (!this.isKicking) {
             return null;
         }
 
-        // Calculate angles specifically for the intended impact moment (e.g., progress = 0.4)
-        const impactProgress = 0.4; // Corresponds to impactFrame in update()
-        const windupEnd = 0.2;
-        const followEnd = 1.0;
+        const kickProgress = this.kickTimer / this.kickDuration;
 
-        let impactThighSwing = 0;
-        let impactShinAngle = KICK_SHIN_IMPACT_ANGLE; // At impactProgress=0.4, shin angle should be at its target
-
-        // Calculate thigh swing at impactProgress
-        if (impactProgress >= windupEnd) { 
-            const phaseProgress = (impactProgress - windupEnd) / (followEnd - windupEnd);
-            // Note: Need access to KICK_THIGH_WINDUP_REL and KICK_THIGH_FOLLOW_REL here
-            // Assuming they are accessible or defined globally/passed in.
-            impactThighSwing = lerp(-KICK_THIGH_WINDUP_REL, KICK_THIGH_FOLLOW_REL, phaseProgress);
-        } else {
-            // Simplified: If impact is somehow before windup end, assume 0 swing for impact point
-            impactThighSwing = 0; 
+        // Check if the kick is within the impact phase
+        if (kickProgress < KICK_IMPACT_START || kickProgress > KICK_IMPACT_END) {
+            return null; // Not in impact phase
         }
-        
+
+        // Determine which leg is kicking based on facing direction
+        const isRightLegKicking = this.facingDirection === 1;
+
+        // Calculate the current foot position during the kick animation
+        // This requires the animation logic to be accessible or duplicated here.
+        // Simplified calculation for impact phase (assuming angles are set correctly by update)
         const hipPos: Point = { x: this.x, y: this.y - this.legLength };
+        const thighAngle = isRightLegKicking ? this.rightThighAngle : this.leftThighAngle;
+        const shinAngle = isRightLegKicking ? this.rightShinAngle : this.leftShinAngle;
         const thighLength = this.legLength * 0.5;
         const shinLength = this.legLength * 0.5;
 
-        let kneePos: Point;
-        let footPos: Point;
-        let finalThighAngle: number;
-        let finalShinAngle = impactShinAngle;
+        const kneePos = calculateEndPoint(hipPos, thighLength, thighAngle);
+        const footPos = calculateEndPoint(kneePos, shinLength, thighAngle + shinAngle);
 
-        if (this.facingDirection === 1) { // Kicking Right
-            finalThighAngle = STAND_ANGLE + impactThighSwing;
-            finalShinAngle = -impactShinAngle; // Shin angle needs flipping for right kick
-            kneePos = calculateEndPoint(hipPos, thighLength, finalThighAngle);
-            footPos = calculateEndPoint(kneePos, shinLength, finalThighAngle + finalShinAngle);
-        } else { // Kicking Left
-            finalThighAngle = STAND_ANGLE - impactThighSwing; // Mirrored relative swing
-            // finalShinAngle = impactShinAngle; // Already set
-            kneePos = calculateEndPoint(hipPos, thighLength, finalThighAngle);
-            footPos = calculateEndPoint(kneePos, shinLength, finalThighAngle + finalShinAngle);
-        }
-        
-        return footPos; // Return the calculated impact foot position
+        return footPos;
     }
 
     /**
      * Calculates the position and radius of the foot hitboxes.
      * Returns an array containing two hitbox objects { x, y, radius }.
      */
-    getFootHitboxes(): { x: number, y: number, radius: number }[] {
+    public getFootHitboxes(): { x: number, y: number, radius: number }[] {
         const hitboxes: { x: number, y: number, radius: number }[] = [];
         const hipPos: Point = { x: this.x, y: this.y - this.legLength };
         const thighLength = this.legLength * 0.5;

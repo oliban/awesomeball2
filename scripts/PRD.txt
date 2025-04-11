@@ -1,0 +1,188 @@
+# Overview
+Awesome Ball 2 is a fast-paced, 2D local multiplayer stick-figure soccer game built for HTML5 Canvas using TypeScript. It aims to recreate and potentially expand upon the core gameplay mechanics, power-ups, and dynamic elements found in the reference Python games (`awesomeball1`, `awesomeball1.5`). The product provides chaotic and fun physics-based soccer gameplay for two players sharing the same computer, featuring distinct stick-figure animations, physics interactions, a variety of power-ups, and environmental effects. It solves the need for a simple, accessible, yet engaging local multiplayer experience.
+
+# Core Features
+Based on `FEATURES.md` and analysis of `awesomeball1` code:
+
+1.  **Core Gameplay Mechanics:**
+    *   **Local Multiplayer:** Supports two players on one machine.
+    *   **Player Characters (`SimpleStickMan` / `StickMan` class):**
+        *   Representation: Stick figures with defined body parts (head, torso, limbs). Team colors customizable.
+        *   Movement: Run left/right (`BASE_PLAYER_SPEED`), jump (`BASE_JUMP_POWER`). Controlled by keyboard input.
+        *   Physics: Velocity (`vx`, `vy`), acceleration, gravity (`GRAVITY`), friction (implicit), bounce logic for player-player and player-ball collisions (`PLAYER_BODY_BOUNCE`, `PLAYER_VEL_TRANSFER`). Can stand on opponent's head or goal crossbars.
+        *   Interactions: Kick ball (`BASE_KICK_FORCE_X/Y`, `KICK_FORCE_LEVEL`), headbutt ball (`HEADBUTT_UP_FORCE`, `HEADBUTT_VY_MULTIPLIER`, complex positional factors).
+        *   Animations:
+            *   Walk cycle (`walk_cycle_timer`, `RUN_UPPER_ARM_SWING`, `LEG_THIGH_SWING`, `LEG_SHIN_BEND_WALK` constants drive limb angles).
+            *   Jump (`JUMP_UPPER_ARM_BASE`, `JUMP_THIGH_TUCK`, `JUMP_SHIN_TUCK` angles).
+            *   Kick (`kick_timer`, `kick_duration`, multi-phase angles: `KICK_THIGH_WINDUP_ANGLE`, `KICK_THIGH_FOLLOW_ANGLE`, `KICK_SHIN_WINDUP_ANGLE`, `KICK_SHIN_IMPACT_ANGLE`, `KICK_SHIN_FOLLOW_ANGLE`). Specific `get_kick_impact_point` calculation.
+            *   Tumble/fall (`TUMBLE_DURATION`, random `rotation_velocity`, `PLAYER_TUMBLE_DAMPING`). Triggered by certain collisions/events.
+        *   States: Normal, jumping, kicking, stunned (`is_stunned`, `stun_timer`), tumbling (`is_tumbling`, `tumble_timer`). Power-up states (`is_flying`, `is_big`, `is_shrunk`, etc.).
+    *   **Ball (`Ball` class):**
+        *   Physics: Movement (`vx`, `vy`), gravity (`GRAVITY`), air friction (`BALL_FRICTION`), ground friction (additional slowdown on `vx`), bounce off ground/walls (`BALL_BOUNCE`), specific bounce logic for goal shields and angular bounce off goal posts/crossbar (`calculate_bounce_angle_off_post`).
+        *   Interaction: Velocity changes based on player kick/headbutt force, influenced by player state (e.g., `BIG_PLAYER_KICK_MULTIPLIER`). Can be frozen by power-up.
+        *   Visuals: Drawn with patterns (e.g., classic soccer ball hexagons/pentagons).
+    *   **Field:**
+        *   Boundaries: Screen edges (sides, top), ground (`GROUND_Y`).
+        *   Goals: Defined at each end (`GOAL_MARGIN_X`, `GOAL_HEIGHT`, `GOAL_POST_THICKNESS`). Drawn isometrically with depth (`draw_goal_isometric`). Goal line detection (`GOAL_LINE_X_LEFT`, `GOAL_LINE_X_RIGHT`).
+    *   **Scoring System:**
+        *   Score points when the ball fully crosses the opponent's goal line.
+        *   Match Structure: Play until `MATCH_POINT_LIMIT` (e.g., 5) is reached.
+        *   Game Structure: Win `GAME_WIN_LIMIT` (e.g., 5) matches to win the game.
+    *   **Collision Handling:**
+        *   Methods: Primarily circle-rect (`pygame.Rect.colliderect`, custom circle logic), point-rect (`pygame.Rect.collidepoint`), line-segment collision (for sword).
+        *   Player vs. Ball (Kick): Uses `get_kick_impact_point` and checks proximity/state. Kick radius potentially adjusted based on ball velocity (`KICK_RADIUS_FALLING_BONUS`).
+        *   Player vs. Ball (Headbutt): Complex check based on relative positions and velocities.
+        *   Player vs. Ball (Body): Rectangle collision, applies bounce/velocity transfer, includes cooldown (`PLAYER_BODY_COLLISION_FRAMES`).
+        *   Ball vs. Walls/Ground/Goal Posts/Shields: Handled in `Ball.update` with specific bounce logic.
+        *   Player vs. Player: Similar bounce physics as player-body-ball. Can result in tumbling/stunning.
+        *   Player Kick vs. Player: If kick impact point hits opponent (not tumbling), can trigger stun/tumble.
+        *   Player Sword vs. Player: Line segment collision check.
+        *   Rocket vs. Player/Ball: Rocket checks for collision, triggers `create_explosion`.
+        *   Player vs. Powerup: Player rect collides with power-up box rect (`ParachutePowerup.check_collision`).
+        *   Player vs. Goal Crossbar: Allows standing on top.
+
+2.  **Visual Elements and Effects:**
+    *   **Rendering:** 2D rendering via HTML5 Canvas.
+    *   **Graphics:** Stick figures, patterned ball, isometric goals, grass ground, dynamic sky background. Potential for simple images (`images/` directory exists).
+    *   **Time of Day Cycle:** Cycles through "Day", "Evening", "Night", "Morning". Changes background color (`TIME_OF_DAY_COLORS`). Draws stars/moon at night/evening.
+    *   **Particle Effects (`Particle` class):** Goal scoring explosions (`GOAL_EXPLOSION_COLORS`, `GOAL_PARTICLE_COUNT`), smoke/dust effects on landing (`SMOKE_PARTICLE_COLOR`, `SMOKE_EMISSION_RATE`), weather effects (rain, snow). Particles have lifespan, speed, size.
+    *   **Scoreboard:** Displays current match score (P1 vs P2) and total games won. Uses distinct fonts. Shows messages ("GOAL!", weather). Flashes score on goal (`SCOREBOARD_TEXT_FLASH_COLOR`). (`draw_scoreboard`).
+    *   **Indicators:** Off-screen arrow pointing to the ball (`draw_offscreen_arrow`).
+    *   **Screen Flash:** Brief white flash on events like goals (`SCREEN_FLASH_COLOR`, `SCREEN_FLASH_DURATION`).
+
+3.  **Audio:**
+    *   **Sound System:** Loads `.wav` files from `sounds/` directory (`load_sounds`). Plays sounds based on events (`play_sound`).
+    *   **Sound Queue:** System for queueing sounds and announcements to prevent overlap (`queue_sound`, `queue_specific_sound`, `play_next_announcement`).
+    *   **Sound Effects:** Specific files identified in `FEATURES.md` and implicitly loaded by `load_sounds` likely cover kick, jump, land, hits, goals, power-ups, player bumps, announcements (score, winner, lead).
+
+4.  **Power-ups (`ParachutePowerup` class, handled in `StickMan.apply_powerup`, global timers):**
+    *   **Spawn System:** Spawn at random intervals (`POWERUP_SPAWN_INTERVAL_MIN/MAX`) at the top, fall with parachutes (`POWERUP_DESCEND_SPEED`), drift slightly (`POWERUP_DRIFT_SPEED`). Drawn as boxes with parachutes.
+    *   **Types (from code & `FEATURES.md`):** Managed via `active_powerups` dict on player or global timers.
+        *   `FLIGHT`: Player can fly (ignores gravity). Duration: `POWERUP_FLIGHT_DURATION`.
+        *   `ROCKET_LAUNCHER`: Gives player ammo (`rocket_ammo`). Kick fires `Rocket` object. Rockets travel (`ROCKET_SPEED`), collide, create `Explosion` (visual + force `ROCKET_EXPLOSION_FORCE`).
+        *   `BIG_PLAYER`: Scales player size (`POWERUP_BIG_PLAYER_SCALE`). Duration: `POWERUP_BIG_PLAYER_DURATION`. Increases kick power (`BIG_PLAYER_KICK_MULTIPLIER`). Cancels `SHRUNK`.
+        *   `SUPER_JUMP`: Increases jump power (`POWERUP_SUPER_JUMP_MULTIPLIER`). Duration: `POWERUP_SUPER_JUMP_DURATION`.
+        *   `BALL_FREEZE`: Freezes ball in place (`ball.is_frozen`). Duration: `POWERUP_BALL_FREEZE_DURATION` (global timer).
+        *   `SPEED_BOOST`: Increases player speed (`POWERUP_SPEED_BOOST_MULTIPLIER`). Duration: `POWERUP_SPEED_BOOST_DURATION`.
+        *   `GOAL_SHIELD`: Activates pulsing shield in front of player's goal (`pX_shield_active`, `pX_shield_timer`). Duration: `POWERUP_GOAL_SHIELD_DURATION`. Ball bounces off.
+        *   `SHRINK_OPPONENT`: Calls `apply_shrink` on opponent. Scales opponent down (`POWERUP_SHRINK_PLAYER_SCALE`). Duration: `POWERUP_SHRINK_PLAYER_DURATION`. Cancels opponent's `BIG_PLAYER`/`ENORMOUS_HEAD`.
+        *   `LOW_GRAVITY`: Reduces effective gravity (`POWERUP_LOW_GRAVITY_FACTOR`). Duration: `POWERUP_LOW_GRAVITY_DURATION` (affects player with power-up).
+        *   `REVERSE_CONTROLS`: Reverses opponent's left/right controls (`apply_reverse_controls`). Duration: `POWERUP_REVERSE_CONTROLS_DURATION`.
+        *   `GOAL_ENLARGER`: Increases *opponent's* goal height (`pX_goal_enlarged_timer`, `POWERUP_GOAL_ENLARGER_HEIGHT_INCREASE`). Duration: `POWERUP_GOAL_ENLARGER_DURATION`.
+        *   `SWORD`: Gives player a sword (`is_sword`). Drawn extending from hand, angle animated with kick. Collides as a line segment (`get_sword_position`). Duration: `POWERUP_SWORD_DURATION`.
+        *   `ENORMOUS_HEAD`: Enlarges player's head (`POWERUP_ENORMOUS_HEAD_SCALE`). Duration: `POWERUP_ENORMOUS_HEAD_DURATION`. Combines with size changes.
+
+5.  **Weather:**
+    *   **System:** Randomly selects weather type (`WEATHER_TYPES`) at intervals or match start.
+    *   **Effects:** Defined in `WEATHER_EFFECTS` dict. Modifies gravity, applies wind force (constant or variable direction/strength), changes background color. Spawns visual weather particles (`WeatherParticle` class).
+    *   **Visuals:** Background color changes, rain/snow particles. Fog might reduce visibility (though implementation detail unclear from static analysis).
+    *   **Messages:** Displays current weather condition message (`WEATHER_MESSAGES`, `WEATHER_MESSAGE_DURATION`).
+    *   **Performance Adaptation:** Option to disable weather effects if FPS drops below threshold (`LOW_FPS_THRESHOLD`, `DISABLE_WEATHER_ON_LOW_FPS`).
+
+6.  **Miscellaneous:**
+    *   **Game States:** Managed via `current_game_state` variable (`WELCOME`, `PLAYING`, `MATCH_OVER`, `GAME_OVER`, `TROPHY`). Controls main loop logic flow.
+    *   **Reset Functions:** `reset_positions` (after goal), `start_new_match` (resets scores, timers, positions), `start_new_game` (resets game wins, calls `start_new_match`).
+    *   **Debug Mode:** Toggled via `debug_mode` flag. Displays extra info (e.g., version, timestamps, potentially physics info). Allows different match point limit (`DEBUG_MATCH_POINT_LIMIT`).
+    *   **Configuration:** Extensive use of constants (defined at top of `main.py` and `simple_player.py`) for tuning physics, visuals, timings, power-ups, etc.
+
+7.  **Controls:**
+    *   **Player 1:** WASD (W-Jump, S-Kick, A-Left, D-Right).
+    *   **Player 2:** Arrow Keys (Up-Jump, Down-Kick, Left-Left, Right-Right).
+    *   Controls can be reversed by power-up.
+
+# User Experience
+*   **User Personas:** Two players seeking fast-paced, humorous, and slightly chaotic local multiplayer action. They enjoy physics-based interactions, unexpected events (power-ups, weather), and simple controls.
+*   **Key User Flows:** (Largely unchanged from previous PRD, but reinforced by code analysis)
+    1.  **Game Start:** Run application -> See Welcome Screen (`draw_welcome_screen`) -> Press Key -> Transition to `PLAYING` state -> `start_new_match` called.
+    2.  **Gameplay Loop:** Input keys -> `StickMan.move/jump/start_kick` -> `StickMan.update` (physics, state, animation) -> `Ball.update` (physics) -> Collision checks (`handle_player_ball_collisions`, etc.) -> `draw` functions called.
+    3.  **Goal Sequence:** Ball crosses goal line -> Goal detected -> `goal_message_timer` set -> Score updated -> Sound/Particles triggered -> Screen flash -> `reset_positions` called after timer -> Resume play.
+    4.  **Power-up Interaction:** `ParachutePowerup.spawn` -> Power-up falls/drifts -> `ParachutePowerup.check_collision(player)` -> `StickMan.apply_powerup` called -> Effects activate (timers, state changes) -> Effects expire (`StickMan.update` checks timers).
+    5.  **Match/Game End:** Score reaches `MATCH_POINT_LIMIT` -> `match_active = False`, `match_over_timer` starts -> State might implicitly be `MATCH_OVER` -> Check `GAME_WIN_LIMIT` -> If game over, `game_over = True` -> When `match_over_timer` expires, transition to `GAME_OVER` state -> Play win sound -> `draw_trophy` -> Wait for key press -> `start_new_game`. If not game over, `start_new_match`.
+*   **UI/UX Considerations:**
+    *   Scoreboard needs to be clear and readable during fast gameplay. `draw_scoreboard` handles layout.
+    *   Controls are simple (4 keys per player), but reversed controls power-up adds challenge.
+    *   Visual/audio feedback is critical: Kick sounds/animations, goal explosions/sounds, particle effects for landings/weather, player stun/tumble visuals.
+    *   Isometric goal visuals add depth.
+    *   Off-screen ball indicator (`draw_offscreen_arrow`) is important for tracking.
+    *   Stick figure animations must clearly show actions (walk, jump, kick phases, tumble). `StickMan.update_limb_angles` handles this.
+
+# Technical Architecture
+*   **Target Platform:** Modern Web Browsers supporting HTML5 Canvas and Web Audio API.
+*   **Development Stack:** TypeScript, Vite (for dev server, build), HTML5, CSS (likely minimal).
+*   **System Components (TypeScript Implementation):**
+    *   **`main.ts` / `GameManager.ts`:** Main game loop (`requestAnimationFrame`), game state management, entity management, main update/draw calls, input handling delegation, timer management.
+    *   **`Player.ts` (based on `StickMan`):** Player state, physics, animation logic, power-up state, drawing stick figure parts.
+    *   **`Ball.ts`:** Ball physics, state (frozen), drawing.
+    *   **`PhysicsEngine.ts` (or integrated):** Handles gravity, velocity updates, potentially basic collision detection helpers.
+    *   **`CollisionSystem.ts` (or integrated):** Implements specific collision logic (player-ball, player-player, ball-world, powerup-player, rocket-entity, sword-player).
+    *   **`RenderingEngine.ts` / `CanvasRenderer.ts`:** Contains drawing functions for all entities (players, ball, goals, scoreboard, particles, power-ups, effects) using Canvas API.
+    *   **`InputHandler.ts`:** Listens for keyboard events, maps them to player actions, considers reversed controls.
+    *   **`AssetLoader.ts`:** Loads sounds (Web Audio API) and potentially images.
+    *   **`AudioManager.ts`:** Manages sound playback, implements queueing logic.
+    *   **`PowerupManager.ts` / `Powerup.ts`:** Handles power-up spawning logic (`ParachutePowerup` concept), power-up entity (`Powerup.ts`), applies effects (potentially via player methods or global state).
+    *   **`ParticleSystem.ts` / `Particle.ts`:** Manages creation, update, and drawing of different particle types (goal, smoke, weather).
+    *   **`WeatherSystem.ts`:** Selects weather, applies physics effects (gravity/wind modifiers passed to physics engine), triggers visual effects (particles, background).
+    *   **`UIManager.ts`:** Responsible for drawing UI elements like scoreboard, messages, trophy screen, debug info.
+    *   **`Constants.ts`:** Centralize all tunable parameters (physics, colors, timings, sizes).
+*   **Data Models (TypeScript Interfaces/Classes):**
+    *   `Player`: { id, position: {x, y}, velocity: {x, y}, size: { headRadius, torsoLength, ... }, state: PlayerStateEnum, animation: { timer, angles }, activePowerups: Map<PowerupType, number>, controls: PlayerControls, score: number, gamesWon: number, rocketAmmo?: number, ... }
+    *   `Ball`: { position: {x, y}, velocity: {x, y}, radius: number, state: BallStateEnum, visualPattern?: PatternData }
+    *   `GameState`: { status: GameStateEnum, scores: { p1: number, p2: number }, gamesWon: { p1: number, p2: number }, matchTimer: number, goalMessageTimer: number, activeWeather: WeatherType, globalTimers: Map<GlobalTimerType, number>, entities: { players: Player[], ball: Ball, powerups: Powerup[], particles: Particle[], rockets: Rocket[], explosions: Explosion[] } }
+    *   `Powerup`: { type: PowerupType, position: {x, y}, state: PowerupStateEnum, visual: { boxRect, chuteShape } }
+    *   `Particle`: { position: {x, y}, velocity: {x, y}, color: string, size: number, lifespan: number, type: ParticleType }
+    *   `Rocket`: { position: {x, y}, velocity: {x, y}, owner: PlayerId }
+    *   `Explosion`: { position: {x, y}, currentRadius: number, maxRadius: number, duration: number }
+*   **APIs and Integrations:** Browser APIs (Canvas 2D Context, KeyboardEvent, Web Audio API, `requestAnimationFrame`). No external services required for core functionality.
+
+# Development Roadmap
+*   **MVP Requirements (Focus: Core Playable Loop):** (Largely same as before, achievable based on reference)
+    1.  Canvas Setup & Game Loop.
+    2.  Basic Rendering: Field, Static Goals.
+    3.  Player Entity: Drawing, Basic WASD/Arrow movement, Basic Gravity/Jump.
+    4.  Ball Entity: Drawing, Basic Gravity, Bounce off Ground/Walls.
+    5.  Basic Collisions: Player-Ball (simple rect), Ball-Wall/Ground, Ball-Goal.
+    6.  Kicking: Simple force application on key press near ball.
+    7.  Scoring: Detect ball in goal, increment score.
+    8.  Basic UI: Display scores.
+    9.  Reset: Simple position reset after goal.
+    10. Minimal Game State: Track playing state.
+
+*   **Future Enhancements (Phased Approach):** (Can now be more confident based on reference code)
+    *   **Phase 2 (Gameplay Polish):** Implement detailed stick figure rendering/animation (`StickMan.draw`, `update_limb_angles`), headbutt action, player-player collision physics (`PLAYER_BODY_BOUNCE`), advanced ball physics (`BALL_FRICTION`, angular bounce), match/game win logic (`MATCH_POINT_LIMIT`, `GAME_WIN_LIMIT`), game state machine (`WELCOME`, `MATCH_OVER`, `GAME_OVER`, `TROPHY`). Isometric goal drawing.
+    *   **Phase 3 (Core Power-ups & Effects):** Power-up spawning (`ParachutePowerup`), Implement initial set: Speed Boost, Big Player, Super Jump, Shrink Opponent. Basic particles (goal explosion, landing smoke). Sound effect integration (kick, jump, goal).
+    *   **Phase 4 (Advanced Power-ups):** Implement: Rocket Launcher (Rocket, Explosion entities/logic), Sword (line collision), Goal Shield, Ball Freeze, Reverse Controls, Low Gravity, Flight, Goal Enlarger, Enormous Head.
+    *   **Phase 5 (Environment & Ambiance):** Weather system (selection, physics mods, visual particles), Time-of-day cycle (background colors, stars/moon). Sound announcements (score, weather). Screen flash effect.
+    *   **Phase 6 (UI & Refinements):** Off-screen ball indicator. Debug mode implementation. Refined scoreboard (`draw_scoreboard`). Trophy screen (`draw_trophy`). Player stun/tumble states and visuals.
+    *   **Phase 7 (Balancing & Optimization):** Extensive playtesting, tune constants (physics, power-up durations/effects), optimize rendering/physics, add performance toggles (e.g., disable weather). Bug fixing.
+
+# Logical Dependency Chain
+(Similar to previous PRD, but with higher confidence based on reference code structure)
+1.  Foundation: Setup -> Game Loop -> Static Rendering (Field, Goals).
+2.  Core Entities: Player Rendering -> Input -> Player Physics -> Ball Rendering -> Ball Physics.
+3.  Core Interaction: Basic Collision -> Kick -> Goal Detection -> Scoring.
+4.  Game Structure: UI (Scoreboard) -> Game States -> Reset Logic -> Match/Game End Logic.
+5.  Gameplay Polish: Advanced Animations -> Headbutt -> Player Collisions -> Advanced Ball Physics.
+6.  Core Systems: Power-up Spawning -> Basic Power-ups -> Particle System -> Sound System.
+7.  Advanced Features: Advanced Power-ups -> Weather -> Time of Day.
+8.  Utilities & Polish: Ball Indicator -> Debug Mode -> Stun/Tumble -> Balancing.
+
+# Risks and Mitigations
+*   **Technical Challenges:**
+    *   *Risk:* Accurately replicating the *feel* of the Python physics and complex interactions (headbutts, angular bounces, player collisions) in TypeScript/Canvas.
+    *   *Mitigation:* Refer closely to the Python constants and logic in `main.py` and `simple_player.py`. Start with direct translations where possible. Allow time for iteration and tuning to match the desired gameplay feel.
+    *   *Risk:* Performance issues on Canvas with many particles, complex animations, and physics calculations per frame.
+    *   *Mitigation:* Profile frequently. Optimize drawing (e.g., cache static elements). Implement performance toggles (disable weather, reduce particles). Use efficient data structures.
+*   **Balancing:**
+    *   *Risk:* The large number of power-ups and weather effects could lead to unbalanced or frustrating gameplay.
+    *   *Mitigation:* Use the constants from `awesomeball1` as a starting point. Conduct playtesting frequently during development, especially after adding new power-ups or weather effects. Be prepared to adjust durations, strengths, and spawn rates.
+*   **Scope Management:**
+    *   *Risk:* Trying to implement all features from `awesomeball1` at once could be overwhelming.
+    *   *Mitigation:* Strictly follow the phased roadmap, focusing on the MVP first. Use the reference code to understand individual features but implement them incrementally.
+
+# Appendix
+*   `FEATURES.md` (Initial high-level feature list)
+*   `awesomeball1/awesome-ball/main.py` (Reference implementation: main loop, game systems, constants)
+*   `awesomeball1/awesome-ball/simple_player.py` (Reference implementation: player class)
+*   `awesomeball1.5/` (Likely contains refinements/additions to `awesomeball1` - consult if specific features differ significantly from `awesomeball1` or `FEATURES.md`).
+*   Target Platform: Modern Web Browsers supporting HTML5 Canvas and Web Audio API.
+*   Development Stack: TypeScript, Vite, HTML5, CSS3. 
