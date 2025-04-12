@@ -204,8 +204,8 @@ export class GameManager {
                 // (e.g., if relative velocity was high - simplify for now)
                 // For simplicity, let's just trigger tumble on body collision for now
                 // Avoid tumbling if already tumbling
-                if (!this.player1.isTumbling) this.player1.startTumble();
-                if (!this.player2.isTumbling) this.player2.startTumble(); 
+                // REMOVED: if (!this.player1.isTumbling) this.player1.startTumble(); 
+                // REMOVED: if (!this.player2.isTumbling) this.player2.startTumble(); 
 
                 console.log("Player-Player Body Collision");
                 audioManager.playSound('PLAYER_BUMP_1'); // Play player bump sound
@@ -233,6 +233,43 @@ export class GameManager {
              this.player2.onOtherPlayerHead = true;
         } else {
              this.player2.onOtherPlayerHead = false; // Reset if not on head
+        }
+
+        // --- Player Kick vs Player Head Collision ---
+        for (const kicker of players) {
+            const target = (kicker === this.player1) ? this.player2 : this.player1;
+            
+            if (kicker.isKicking && !target.isTumbling) { // Only check if kicking and target isn't already tumbling
+                const kickPoint = kicker.getKickImpactPoint(); // Check impact phase
+                if (kickPoint) {
+                    const targetHead = target.getHeadCircle();
+                    const dx = kickPoint.x - targetHead.x;
+                    const dy = kickPoint.y - targetHead.y;
+                    const distSq = dx * dx + dy * dy;
+                    const collisionRadius = targetHead.radius + 5; // Add a small buffer like in ref code
+                    const collisionRadiusSq = collisionRadius * collisionRadius;
+
+                    if (distSq < collisionRadiusSq) {
+                        console.log(`Player ${kicker === this.player1 ? 1 : 2} kicked Player ${target === this.player1 ? 1 : 2} in the head! Pushback!`);
+
+                        // Apply Pushback Force & State
+                        const pushbackForceX = C.KICK_HEAD_PUSHBACK_FORCE_X;
+                        const pushbackForceY = C.KICK_HEAD_PUSHBACK_FORCE_Y;
+                        target.vx = pushbackForceX * kicker.facingDirection; // Set initial pushback velocity
+                        target.vy = -pushbackForceY; // Set initial pushback velocity (negated Y)
+                        target.isJumping = true;
+                        target.onOtherPlayerHead = false;
+                        target.onLeftCrossbar = false;
+                        target.onRightCrossbar = false;
+                        target.isBeingPushedBack = true;
+                        target.pushbackTimer = C.PUSHBACK_DURATION; // Define this constant! e.g., 0.2s
+
+                        // TODO: Apply stun?
+                        audioManager.playSound('BODY_HIT_1');
+                        kicker.isKicking = false;
+                    }
+                }
+            }
         }
 
         // --- Player-Ball Collisions ---
@@ -483,17 +520,19 @@ export class GameManager {
                 // Handle Input
                 // Player 1
                 let p1EffectiveSpeed = this.player1.playerSpeed * this.player1.speedMultiplier;
-                if (this.inputHandler.isKeyPressed(C.Player1Controls.LEFT)) {
-                    this.player1.vx = -p1EffectiveSpeed; // Use effective speed
-                    this.player1.facingDirection = -1;
-                } else if (this.inputHandler.isKeyPressed(C.Player1Controls.RIGHT)) {
-                    this.player1.vx = p1EffectiveSpeed; // Use effective speed
-                    this.player1.facingDirection = 1;
-                } else {
-                    this.player1.vx = 0;
+                if (!this.player1.isBeingPushedBack) { // Check pushback state
+                    if (this.inputHandler.isKeyPressed(C.Player1Controls.LEFT)) {
+                        this.player1.vx = -p1EffectiveSpeed;
+                        this.player1.facingDirection = -1;
+                    } else if (this.inputHandler.isKeyPressed(C.Player1Controls.RIGHT)) {
+                        this.player1.vx = p1EffectiveSpeed;
+                        this.player1.facingDirection = 1;
+                    } else {
+                        this.player1.vx = 0;
+                    }
                 }
                 if (this.inputHandler.isKeyPressed(C.Player1Controls.JUMP)) {
-                    this.player1.jump(); // Jump uses multiplier internally
+                    this.player1.jump();
                 }
                 if (this.inputHandler.isKeyPressed(C.Player1Controls.KICK)) {
                     this.player1.startKick();
@@ -501,17 +540,19 @@ export class GameManager {
 
                 // Player 2
                 let p2EffectiveSpeed = this.player2.playerSpeed * this.player2.speedMultiplier;
-                if (this.inputHandler.isKeyPressed(C.Player2Controls.LEFT)) {
-                    this.player2.vx = -p2EffectiveSpeed; // Use effective speed
-                    this.player2.facingDirection = -1;
-                } else if (this.inputHandler.isKeyPressed(C.Player2Controls.RIGHT)) {
-                    this.player2.vx = p2EffectiveSpeed; // Use effective speed
-                    this.player2.facingDirection = 1;
-                } else {
-                    this.player2.vx = 0;
+                if (!this.player2.isBeingPushedBack) { // Check pushback state
+                    if (this.inputHandler.isKeyPressed(C.Player2Controls.LEFT)) {
+                        this.player2.vx = -p2EffectiveSpeed;
+                        this.player2.facingDirection = -1;
+                    } else if (this.inputHandler.isKeyPressed(C.Player2Controls.RIGHT)) {
+                        this.player2.vx = p2EffectiveSpeed;
+                        this.player2.facingDirection = 1;
+                    } else {
+                        this.player2.vx = 0;
+                    }
                 }
                 if (this.inputHandler.isKeyPressed(C.Player2Controls.JUMP)) {
-                    this.player2.jump(); // Jump uses multiplier internally
+                    this.player2.jump();
                 }
                 if (this.inputHandler.isKeyPressed(C.Player2Controls.KICK)) {
                     this.player2.startKick();

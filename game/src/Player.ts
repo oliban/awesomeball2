@@ -94,6 +94,10 @@ export class Player {
     public kickImpactForceX: number = 0;
     public kickImpactForceY: number = 0;
 
+    // State flags for temporary effects
+    public isBeingPushedBack: boolean = false;
+    public pushbackTimer: number = 0;
+
     // Appearance & Identification
     public teamColor: string; // e.g., '#FFFFFF' or 'rgb(255, 255, 255)'
     public teamAccent: string;
@@ -542,6 +546,17 @@ export class Player {
                 this.rightShinAngle = 0;
                 this.leftArmAngle = STAND_ANGLE;
                 this.rightArmAngle = STAND_ANGLE;
+            }
+        }
+
+        // Update Pushback State
+        if (this.isBeingPushedBack) {
+            this.pushbackTimer -= dt;
+            if (this.pushbackTimer <= 0) {
+                this.isBeingPushedBack = false;
+                this.pushbackTimer = 0;
+                // Optionally reset vx here too, or let it decay naturally/be overridden by input
+                // this.vx = 0; 
             }
         }
 

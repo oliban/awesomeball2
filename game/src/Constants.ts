@@ -44,12 +44,16 @@ export const PLAYER_LIMB_WIDTH = 6;
 export const BALL_RADIUS = 15; // Increased radius to match reference
 
 // Field Layout
-export const GOAL_WIDTH = 50; // Width of the goal opening (Ref: 50)
-export const GOAL_HEIGHT = 150; // Height of the goal opening (Ref: 150)
-export const GOAL_POST_THICKNESS = 8; // Thickness of posts/crossbar (Ref: 8)
-export const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT; // Derived: 550 - 150 = 400
-export const LEFT_GOAL_X = 0; // Position of the left goal edge (Ref: 0)
-export const RIGHT_GOAL_X = SCREEN_WIDTH - GOAL_WIDTH; // Position of the right goal edge start (Ref: 800 - 50 = 750)
+export const GOAL_WIDTH = 80;
+export const GOAL_HEIGHT = 150; // Distance from ground to crossbar
+export const GOAL_POST_THICKNESS = 10;
+export const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT; // Y coordinate of the top of the goal posts/bottom of crossbar
+export const LEFT_GOAL_X = 0; // Left edge of the left goal box
+export const RIGHT_GOAL_X = SCREEN_WIDTH - GOAL_WIDTH; // Left edge of the right goal box
+
+// Define Goal Line X coordinates for collision/scoring
+export const GOAL_LINE_X_LEFT = LEFT_GOAL_X; // Line P2 scores in
+export const GOAL_LINE_X_RIGHT = RIGHT_GOAL_X + GOAL_WIDTH; // Line P1 scores in
 
 // Game State
 export enum GameState {
@@ -122,4 +126,17 @@ export const ASSETS = {
         // Add NUM_6 to NUM_9 if needed
     }
     // Add other asset types like IMAGES later if needed
-}; 
+};
+
+// Player Animation Constants
+export const STAND_ANGLE = Math.PI / 2; // Angle for standing limbs (pointing down) 
+
+export const KICK_IMPACT_END = 0.6;       // End of impact phase
+
+// Kick Interaction Constants
+export const KICK_HEAD_PUSHBACK_FORCE_X = 600; // Further Increased Horizontal force
+export const KICK_HEAD_PUSHBACK_FORCE_Y = 200; // Slightly Decreased Upward force
+export const PUSHBACK_DURATION = 0.2; // Duration (in seconds) the player is pushed back and ignores input
+
+// POWERUPS
+// ... existing code ... 
