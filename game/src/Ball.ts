@@ -29,18 +29,17 @@ export class Ball {
     }
 
     update(dt: number): void {
-        // Log state before check
-        console.log(`Ball update check: isFrozen=${this.isFrozen}, freezeTimer=${this.freezeTimer.toFixed(2)}`); // DEBUG LOG
-
-        // Decrement freeze timer if frozen
+        // Bail out early if frozen
+        // console.log(`Ball update check: isFrozen=${this.isFrozen}, freezeTimer=${this.freezeTimer?.toFixed(2)}`); // DEBUG LOG
         if (this.isFrozen) {
-            this.freezeTimer -= dt; // Ensure timer decreases
-            console.log(`Ball frozen timer: ${this.freezeTimer.toFixed(2)}`); // DEBUG LOG
-            if (this.freezeTimer <= 0) {
-                this.isFrozen = false;
-                console.log("Ball Unfrozen!");
+            if (this.freezeTimer && this.freezeTimer > 0) {
+                this.freezeTimer -= dt;
+                if (this.freezeTimer <= 0) {
+                    this.isFrozen = false;
+                    console.log("Ball Unfrozen!");
+                }
+                return; // Skip all physics updates if frozen
             }
-            return; // Skip all physics updates if frozen
         }
 
         // Store velocity before physics for sound checks

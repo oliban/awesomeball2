@@ -33,6 +33,7 @@ export const POWERUP_SUPER_JUMP_DURATION = 10.0;
 export const POWERUP_BIG_PLAYER_SCALE = 1.5; // 50% bigger
 export const POWERUP_BIG_PLAYER_DURATION = 12.0;
 export const POWERUP_BALL_FREEZE_DURATION = 5.0;
+export const BALL_FREEZE_DURATION = 5.0;
 // Add constants for Ball Freeze, Shrink, etc. later
 
 // Player Constants (Simplified for now)
@@ -140,3 +141,11 @@ export const PUSHBACK_DURATION = 0.2; // Duration (in seconds) the player is pus
 
 // POWERUPS
 // ... existing code ... 
+
+// Rocket Launcher Constants
+export const ROCKET_SPEED = 450; // Pixels per second
+export const ROCKET_BLAST_RADIUS = 80; // Pixels
+export const ROCKET_EXPLOSION_FORCE = 800; // Magnitude of pushback
+export const ROCKET_PLAYER_UPWARD_BOOST = 150; // Extra upward push for players in blast
+export const ROCKET_BALL_UPWARD_BOOST = 100; // Upward push for ball in blast
+export const ROCKET_TUMBLE_DURATION = 1.5; // Seconds player tumbles after explosion 

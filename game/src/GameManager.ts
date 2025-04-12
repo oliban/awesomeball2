@@ -8,6 +8,7 @@ import { PowerupType } from './Powerup';
 import { ParticleSystem } from './ParticleSystem';
 import { Powerup } from './Powerup';
 import { audioManager } from './AudioManager';
+import { Rocket } from './Rocket';
 
 // Add match point limit to constants if not already there
 const MATCH_POINT_LIMIT = 5; // Example limit
@@ -31,6 +32,20 @@ export class GameManager {
     private goalMessageTimer: number = 0; // Timer for post-goal delay
     private matchOverTimer: number = 0; // Timer for match over display
     private powerupManager: PowerupManager;
+    private activeRockets: Rocket[] = []; // Array to hold active rockets
+
+    // Helper to spawn a specific powerup type at a location
+    // Moved BEFORE constructor to fix runtime error
+    private spawnSpecificPowerup(type: PowerupType, x: number, y: number): void {
+        const newPowerup = new Powerup(x, y, type);
+        // Override physics for instant placement if needed (e.g., set vy = 0)
+        // REMOVED: newPowerup.vy = 0;
+        // REMOVED: newPowerup.vx = 0;
+        // REMOVED: newPowerup.hasParachute = false; // No parachute for debug spawn
+        // Let the Powerup constructor handle initial velocity and parachute
+        this.powerupManager.addPowerup(newPowerup);
+        // console.log(`DEBUG: Spawned ${type} at (${x.toFixed(0)}, ${y.toFixed(0)}) - Should fall now`);
+    }
 
     constructor(ctx: CanvasRenderingContext2D) {
         this.ctx = ctx;
@@ -70,9 +85,8 @@ export class GameManager {
             C.GROUND_Y - 100
         );
 
-        // DEBUG: Spawn a Ball Freeze powerup immediately [REMOVED]
-        // const freezePowerup = new Powerup(C.SCREEN_WIDTH / 2, C.GROUND_Y - 150, PowerupType.BALL_FREEZE);
-        // this.powerupManager.addPowerup(freezePowerup);
+        // DEBUG: Spawn initial Rocket Launcher
+        this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
     }
 
     private resetPositions(): void {
@@ -197,15 +211,11 @@ export class GameManager {
                 const bounceFactor = 0.3; // How much velocity is reversed
                 const p1vx = this.player1.vx;
                 const p2vx = this.player2.vx;
-                this.player1.vx = -p1vx * bounceFactor + p2vx * bounceFactor * 0.5; // Add some of other player's vel
+                this.player1.vx = -p1vx * bounceFactor + p2vx * bounceFactor * 0.5;
                 this.player2.vx = -p2vx * bounceFactor + p1vx * bounceFactor * 0.5;
 
                 // Optional: Trigger tumble if collision is significant
-                // (e.g., if relative velocity was high - simplify for now)
-                // For simplicity, let's just trigger tumble on body collision for now
-                // Avoid tumbling if already tumbling
-                // REMOVED: if (!this.player1.isTumbling) this.player1.startTumble(); 
-                // REMOVED: if (!this.player2.isTumbling) this.player2.startTumble(); 
+                // Tumbling removed - only happens on rocket explosion now
 
                 console.log("Player-Player Body Collision");
                 audioManager.playSound('PLAYER_BUMP_1'); // Play player bump sound
@@ -233,43 +243,6 @@ export class GameManager {
              this.player2.onOtherPlayerHead = true;
         } else {
              this.player2.onOtherPlayerHead = false; // Reset if not on head
-        }
-
-        // --- Player Kick vs Player Head Collision ---
-        for (const kicker of players) {
-            const target = (kicker === this.player1) ? this.player2 : this.player1;
-            
-            if (kicker.isKicking && !target.isTumbling) { // Only check if kicking and target isn't already tumbling
-                const kickPoint = kicker.getKickImpactPoint(); // Check impact phase
-                if (kickPoint) {
-                    const targetHead = target.getHeadCircle();
-                    const dx = kickPoint.x - targetHead.x;
-                    const dy = kickPoint.y - targetHead.y;
-                    const distSq = dx * dx + dy * dy;
-                    const collisionRadius = targetHead.radius + 5; // Add a small buffer like in ref code
-                    const collisionRadiusSq = collisionRadius * collisionRadius;
-
-                    if (distSq < collisionRadiusSq) {
-                        console.log(`Player ${kicker === this.player1 ? 1 : 2} kicked Player ${target === this.player1 ? 1 : 2} in the head! Pushback!`);
-
-                        // Apply Pushback Force & State
-                        const pushbackForceX = C.KICK_HEAD_PUSHBACK_FORCE_X;
-                        const pushbackForceY = C.KICK_HEAD_PUSHBACK_FORCE_Y;
-                        target.vx = pushbackForceX * kicker.facingDirection; // Set initial pushback velocity
-                        target.vy = -pushbackForceY; // Set initial pushback velocity (negated Y)
-                        target.isJumping = true;
-                        target.onOtherPlayerHead = false;
-                        target.onLeftCrossbar = false;
-                        target.onRightCrossbar = false;
-                        target.isBeingPushedBack = true;
-                        target.pushbackTimer = C.PUSHBACK_DURATION; // Define this constant! e.g., 0.2s
-
-                        // TODO: Apply stun?
-                        audioManager.playSound('BODY_HIT_1');
-                        kicker.isKicking = false;
-                    }
-                }
-            }
         }
 
         // --- Player-Ball Collisions ---
@@ -351,7 +324,7 @@ export class GameManager {
                 const bodyRect = player.getBodyRect(); // Simple rect for body
                 // Check collision between ball circle and player body rect
                 if (this.checkCircleRectCollision(this.ball, bodyRect)) {
-                    console.log("Player-Ball Body Collision");
+                    // console.log("Player-Ball Body Collision");
 
                     // Simple positional correction: Push ball out along axis of least penetration
                     const closestX = Math.max(bodyRect.x, Math.min(this.ball.x, bodyRect.x + bodyRect.width));
@@ -429,6 +402,86 @@ export class GameManager {
                 // ball.vx *= -0.5; // Reduce velocity slightly 
             }
         }
+
+        // --- Player Kick vs Player Head Collision ---
+        for (const kicker of players) {
+            const target = (kicker === this.player1) ? this.player2 : this.player1;
+            
+            if (kicker.isKicking && !target.isTumbling && !target.isBeingPushedBack) { // Check states
+                const kickPoint = kicker.getKickImpactPoint();
+                if (kickPoint) {
+                    const targetHead = target.getHeadCircle();
+                    const dx = kickPoint.x - targetHead.x;
+                    const dy = kickPoint.y - targetHead.y;
+                    const distSq = dx * dx + dy * dy;
+                    const collisionRadius = targetHead.radius + 5; // Buffer
+                    const collisionRadiusSq = collisionRadius * collisionRadius;
+
+                    if (distSq < collisionRadiusSq) {
+                        console.log(`Player ${kicker === this.player1 ? 1 : 2} kicked Player ${target === this.player1 ? 1 : 2} in the head! Pushback!`);
+
+                        const pushbackForceX = C.KICK_HEAD_PUSHBACK_FORCE_X;
+                        const pushbackForceY = C.KICK_HEAD_PUSHBACK_FORCE_Y;
+                        target.vx = pushbackForceX * kicker.facingDirection;
+                        target.vy = -pushbackForceY;
+                        target.isJumping = true;
+                        target.onOtherPlayerHead = false;
+                        target.onLeftCrossbar = false;
+                        target.onRightCrossbar = false;
+                        target.isBeingPushedBack = true;
+                        target.pushbackTimer = C.PUSHBACK_DURATION;
+
+                        audioManager.playSound('BODY_HIT_1'); 
+                        kicker.isKicking = false; 
+                    }
+                }
+            }
+        }
+        
+        // --- Rocket Collisions ---
+        for (let i = this.activeRockets.length - 1; i >= 0; i--) {
+            const rocket = this.activeRockets[i];
+            if (!rocket.isActive) continue; // Skip inactive rockets
+
+            const rocketRect = rocket.getRect();
+            let exploded = false;
+
+            // Check Rocket vs Players
+            for (const player of players) {
+                if (player === rocket.owner) continue; // Don't collide with self
+
+                const playerBodyRect = player.getBodyRect();
+                const playerHeadCircle = player.getHeadCircle();
+
+                // Check body collision
+                if (this.checkRectCollision(rocketRect, playerBodyRect)) {
+                    console.log(`Rocket hit Player ${player === this.player1 ? 1 : 2} body`);
+                    exploded = true;
+                    break; // Rocket explodes on first player hit
+                }
+                // Check head collision (circle-rect)
+                if (!exploded && this.checkCircleRectCollision(playerHeadCircle, rocketRect)) {
+                     console.log(`Rocket hit Player ${player === this.player1 ? 1 : 2} head`);
+                    exploded = true;
+                    break; // Rocket explodes on first player hit
+                }
+            }
+
+            // Check Rocket vs Ball (only if not already exploded)
+            // Use ball's direct properties for circle-rect check
+            const ballCircle = { x: this.ball.x, y: this.ball.y, radius: this.ball.radius };
+            if (!exploded && this.checkCircleRectCollision(ballCircle, rocketRect)) {
+                console.log("Rocket hit Ball");
+                exploded = true;
+            }
+
+            // Handle explosion if occurred
+            if (exploded) {
+                this.createExplosion(rocket.lastPos.x, rocket.lastPos.y); // Use rocket's last pos
+                rocket.isActive = false; // Deactivate rocket visually
+                // Don't splice here, let the main rocket update loop handle removal
+            }
+        }
     }
 
     // Helper function for simple rectangle collision
@@ -500,11 +553,32 @@ export class GameManager {
                 console.log("Calling ball.freeze()"); // Add log before call
                 this.ball.freeze(C.POWERUP_BALL_FREEZE_DURATION);
                 break;
+            case PowerupType.ROCKET_LAUNCHER:
+                { // Use block scope for constants
+                    const ammoToAdd = 3; // Or C.ROCKET_LAUNCHER_AMMO_GIVEN
+                    const wasAlreadyEquipped = player.hasRocketLauncher;
+
+                    if (wasAlreadyEquipped) {
+                        player.rocketAmmo += ammoToAdd;
+                    } else {
+                        player.hasRocketLauncher = true;
+                        player.rocketAmmo = ammoToAdd; // Set initial ammo
+                    }
+                    
+                    console.log(`Player ${player === this.player1 ? 1 : 2} ${wasAlreadyEquipped ? 'added' : 'picked up'} Rocket Launcher (Ammo: ${player.rocketAmmo})`);
+                    // TODO: Add sound effect for pickup
+                    break;
+                }
             // Add other cases later
+            default:
+                console.warn(`Unhandled powerup type: ${type}`);
         }
     }
 
     private update(dt: number): void {
+        // Update Input Handler state first
+        this.inputHandler.update(); 
+
         switch (this.currentState) {
             case C.GameState.WELCOME:
                 // Check for any key press to start
@@ -531,11 +605,21 @@ export class GameManager {
                         this.player1.vx = 0;
                     }
                 }
-                if (this.inputHandler.isKeyPressed(C.Player1Controls.JUMP)) {
-                    this.player1.jump();
+                if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.JUMP)) {
+                    this.player1.jump(); // Always jump on JUMP press
                 }
-                if (this.inputHandler.isKeyPressed(C.Player1Controls.KICK)) {
-                    this.player1.startKick();
+                if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.KICK)) {
+                    // If player has launcher, try to fire, otherwise do a normal kick
+                    if (this.player1.hasRocketLauncher) {
+                        const newRocket = this.player1.fireRocket(); // Attempt to fire
+                        if (newRocket) {
+                            this.activeRockets.push(newRocket); // Add if successful
+                        }
+                        // NOTE: We don't fall back to kick if firing fails (e.g., no ammo)
+                        // The kick button is now dedicated to firing when launcher is equipped.
+                    } else {
+                        this.player1.startKick(); // Normal kick
+                    }
                 }
 
                 // Player 2
@@ -551,11 +635,27 @@ export class GameManager {
                         this.player2.vx = 0;
                     }
                 }
-                if (this.inputHandler.isKeyPressed(C.Player2Controls.JUMP)) {
-                    this.player2.jump();
+                if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.JUMP)) {
+                    this.player2.jump(); // Always jump on JUMP press
                 }
-                if (this.inputHandler.isKeyPressed(C.Player2Controls.KICK)) {
-                    this.player2.startKick();
+                if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.KICK)) {
+                    // If player has launcher, try to fire, otherwise do a normal kick
+                    if (this.player2.hasRocketLauncher) {
+                        const newRocket = this.player2.fireRocket(); // Attempt to fire
+                        if (newRocket) {
+                            this.activeRockets.push(newRocket); // Add if successful
+                        }
+                        // NOTE: Kick button is now dedicated to firing when launcher is equipped.
+                    } else {
+                        this.player2.startKick(); // Normal kick
+                    }
+                }
+                
+                // DEBUG: Spawn Rocket Launcher on '1' key press
+                // Use wasKeyJustPressed for single-trigger action
+                if (this.inputHandler.wasKeyJustPressed('1')) {
+                    // console.log("DEBUG: '1' key JUST pressed while PLAYING."); 
+                    this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
                 }
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)
@@ -591,6 +691,16 @@ export class GameManager {
 
                 // Update Powerups
                 this.powerupManager.update(dt);
+
+                // --- Update Active Rockets ---
+                for (let i = this.activeRockets.length - 1; i >= 0; i--) {
+                    const rocket = this.activeRockets[i];
+                    rocket.update(dt); // Update rocket physics
+                    if (!rocket.isActive) {
+                        this.activeRockets.splice(i, 1); // Remove inactive rockets
+                    }
+                }
+                // -------------------------
 
                 // Update Particle System
                 this.particleSystem.update(dt); // Update particles
@@ -647,26 +757,38 @@ export class GameManager {
         // Draw Powerups
         this.powerupManager.draw(this.ctx);
 
+        // --- Draw Active Rockets ---
+        for (const rocket of this.activeRockets) {
+            if (rocket.isActive) { // Only draw active rockets
+                 rocket.draw(this.ctx);
+             }
+        }
+        // -------------------------
+
         // Draw Particles
         this.particleSystem.draw(this.ctx); // Draw particles
 
         // Draw UI using UIManager
-        console.log(`GameManager render: ball.isFrozen=${this.ball.isFrozen}, ball.freezeTimer=${this.ball['freezeTimer']?.toFixed(2)}`); // DEBUG LOG
+        // console.log(`GameManager render: ball.isFrozen=${this.ball.isFrozen}, ball.freezeTimer=${this.ball['freezeTimer']?.toFixed(2)}`); // DEBUG LOG
         const uiState: UIGameState = {
             currentState: this.currentState,
             player1Score: this.player1Score,
             player2Score: this.player2Score,
             // Player 1 timers/state
-            p1SpeedBoostTimer: this.player1['speedBoostTimer'], // Access private timer
-            p1SuperJumpTimer: this.player1['superJumpTimer'], // Access private timer
-            p1BigPlayerTimer: this.player1['bigPlayerTimer'], // Access private timer
+            p1SpeedBoostTimer: this.player1['speedBoostTimer'],
+            p1SuperJumpTimer: this.player1['superJumpTimer'],
+            p1BigPlayerTimer: this.player1['bigPlayerTimer'],
+            p1HasRocketLauncher: this.player1.hasRocketLauncher,
+            p1RocketAmmo: this.player1.rocketAmmo,
             // Player 2 timers/state
-            p2SpeedBoostTimer: this.player2['speedBoostTimer'], // Access private timer
-            p2SuperJumpTimer: this.player2['superJumpTimer'], // Access private timer
-            p2BigPlayerTimer: this.player2['bigPlayerTimer'], // Access private timer
+            p2SpeedBoostTimer: this.player2['speedBoostTimer'],
+            p2SuperJumpTimer: this.player2['superJumpTimer'],
+            p2BigPlayerTimer: this.player2['bigPlayerTimer'],
+            p2HasRocketLauncher: this.player2.hasRocketLauncher,
+            p2RocketAmmo: this.player2.rocketAmmo,
             // Global state
             ballIsFrozen: this.ball.isFrozen,
-            ballFreezeTimer: this.ball['freezeTimer'], // Access private timer
+            ballFreezeTimer: this.ball['freezeTimer'],
             // Timers for UI messages (already passed)
             goalMessageTimer: this.goalMessageTimer,
             matchOverTimer: this.matchOverTimer
@@ -788,5 +910,80 @@ export class GameManager {
             this.ctx.fillRect(pole.x, pole.y, pole.width, pole.height);
             this.ctx.strokeRect(pole.x, pole.y, pole.width, pole.height);
         }
+    }
+
+    private createExplosion(x: number, y: number): void {
+        console.log(`Creating REAL Explosion at (${x.toFixed(0)}, ${y.toFixed(0)}) with radius ${C.ROCKET_BLAST_RADIUS}`);
+        audioManager.playSound('ROCKET_EXPLODE_1'); // Ensure sound plays
+
+        const players = [this.player1, this.player2];
+        const blastRadiusSq = C.ROCKET_BLAST_RADIUS * C.ROCKET_BLAST_RADIUS;
+
+        // Apply effects to Players
+        for (const player of players) {
+            const dx = player.x - x;
+            const dy = (player.y - player.torsoLength / 2) - y; // Use player torso center approx
+            const distSq = dx * dx + dy * dy;
+
+            if (distSq < blastRadiusSq) {
+                console.log(`Player ${player === this.player1 ? 1 : 2} in blast radius!`);
+                const dist = Math.sqrt(distSq);
+                const forceScale = 1.0 - (dist / C.ROCKET_BLAST_RADIUS); // 1 at center, 0 at edge
+                const forceMagnitude = C.ROCKET_EXPLOSION_FORCE * forceScale;
+                
+                let pushVecX = 0;
+                let pushVecY = 0;
+                if (dist > 0) { // Avoid division by zero if directly on top
+                    pushVecX = dx / dist;
+                    pushVecY = dy / dist;
+                }
+                 else { // Apply random direction if at epicenter
+                    const randomAngle = Math.random() * Math.PI * 2;
+                    pushVecX = Math.cos(randomAngle);
+                    pushVecY = Math.sin(randomAngle);
+                }
+
+                // Apply force
+                player.vx += pushVecX * forceMagnitude;
+                player.vy += pushVecY * forceMagnitude - C.ROCKET_PLAYER_UPWARD_BOOST;
+                
+                player.isJumping = true; // Ensure gravity applies
+                player.isBeingPushedBack = false; // Cancel kick pushback if hit by explosion
+                player.pushbackTimer = 0;
+                player.startTumble(); // TUMBLE!
+            }
+        }
+
+        // Apply effects to Ball
+        const dxBall = this.ball.x - x;
+        const dyBall = this.ball.y - y;
+        const distSqBall = dxBall * dxBall + dyBall * dyBall;
+
+        if (distSqBall < blastRadiusSq) {
+             console.log("Ball in blast radius!");
+            const distBall = Math.sqrt(distSqBall);
+            const forceScaleBall = 1.0 - (distBall / C.ROCKET_BLAST_RADIUS);
+            const forceMagnitudeBall = C.ROCKET_EXPLOSION_FORCE * forceScaleBall; // Use same base force?
+
+             let pushVecXBall = 0;
+             let pushVecYBall = 0;
+             if (distBall > 0) {
+                 pushVecXBall = dxBall / distBall;
+                 pushVecYBall = dyBall / distBall;
+             } else { // Apply random direction if at epicenter
+                 const randomAngle = Math.random() * Math.PI * 2;
+                 pushVecXBall = Math.cos(randomAngle);
+                 pushVecYBall = Math.sin(randomAngle);
+             }
+            
+            // Apply force to ball using its method
+            this.ball.applyForce(pushVecXBall * forceMagnitudeBall, 
+                                pushVecYBall * forceMagnitudeBall - C.ROCKET_BALL_UPWARD_BOOST);
+        }
+        
+        // Emit Explosion Particles
+        this.particleSystem.emit('explosion', x, y, 50, { radius: C.ROCKET_BLAST_RADIUS }); // Add explosion particle type
+
+        // TODO: Refine visual/audio effects if needed
     }
 } 

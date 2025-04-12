@@ -93,7 +93,27 @@ export class ParticleSystem {
                     this.addParticle(new Particle(x, y, vx, vy, lifespan, color, radius, gravityEffect, 'spark'));
                 }
                 break;
-
+            case 'explosion': // Type: mixture?
+                const explosionCount = options.count !== undefined ? options.count : 50;
+                const blastRadius = options.radius || 50;
+                for (let i = 0; i < explosionCount; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * (blastRadius * 2.5) + (blastRadius * 0.5); // Speed related to radius
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+                    const lifespan = Math.random() * 0.6 + 0.3; // Short to medium life
+                    let radius = Math.random() * 3 + 2; // Larger particles
+                    radius *= scale; // Scale with player size? Probably not for explosion.
+                    
+                    // Mix of colors
+                    const explosionColors = ['#FFA500', '#FF4500', '#FFD700', '#FFFFFF', '#808080'];
+                    const color = explosionColors[Math.floor(Math.random() * explosionColors.length)];
+                    
+                    const gravityEffect = 0.05; // Some gravity
+                    const pType = (Math.random() < 0.7) ? 'spark' : 'smoke'; // Mostly sparks
+                    this.addParticle(new Particle(x, y, vx, vy, lifespan, color, radius, gravityEffect, pType));
+                }
+                break;
         }
     }
 

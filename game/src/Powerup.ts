@@ -6,7 +6,8 @@ export enum PowerupType {
     BIG_PLAYER = 'BIG_PLAYER',
     SUPER_JUMP = 'SUPER_JUMP',
     BALL_FREEZE = 'BALL_FREEZE',
-    // Add more later: ROCKET_LAUNCHER, GOAL_SHIELD, SHRINK_OPPONENT, etc.
+    ROCKET_LAUNCHER = 'ROCKET_LAUNCHER',
+    // Add more later: GOAL_SHIELD, SHRINK_OPPONENT, etc.
 }
 
 // Base class for all power-ups

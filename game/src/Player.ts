@@ -2,6 +2,7 @@
 
 import * as C from './Constants';
 import { audioManager } from './AudioManager'; // Import the AudioManager
+import { Rocket } from './Rocket'; // Import Rocket class
 
 // Basic type for representing points or vectors
 type Point = {
@@ -155,9 +156,13 @@ export class Player {
     public jumpMultiplier: number = 1.0;
     public sizeMultiplier: number = 1.0;
     private speedBoostTimer: number = 0;
-    private superJumpTimer: number = 0;
+    public superJumpTimer: number = 0;
     private bigPlayerTimer: number = 0;
     // Add timers for other effects later (shrink, enormous head, etc.)
+
+    // Powerup States
+    public hasRocketLauncher: boolean = false;
+    public rocketAmmo: number = 0;
 
     constructor(
         x: number,
@@ -220,6 +225,14 @@ export class Player {
      */
     public draw(ctx: CanvasRenderingContext2D) {
         ctx.save(); // Save context state
+
+        // Apply rotation if tumbling
+        if (this.isTumbling) {
+            // Rotate around the player's approximate center (e.g., hip position)
+            ctx.translate(this.x, this.y - this.legLength);
+            ctx.rotate(this.rotationAngle);
+            ctx.translate(-this.x, -(this.y - this.legLength));
+        }
 
         // --- Define Base Joint Positions --- 
         const hipPos: Point = { x: this.x, y: this.y - this.legLength }; // Top of legs
@@ -532,8 +545,7 @@ export class Player {
         // Update Tumble State
         if (this.isTumbling) {
             this.tumbleTimer -= dt;
-            // TODO: Apply rotation based on rotationVelocity for drawing
-            // this.rotationAngle += this.rotationVelocity * dt;
+            this.rotationAngle += this.rotationVelocity * dt;
             if (this.tumbleTimer <= 0) {
                 this.isTumbling = false;
                 this.tumbleTimer = 0;
@@ -662,15 +674,18 @@ export class Player {
     public startTumble() {
         if (!this.isTumbling) { // Prevent re-triggering mid-tumble
             this.isTumbling = true;
-            // TODO: Define tumble duration constant
-            this.tumbleTimer = 2.0; // Example duration
-            // TODO: Define tumble rotation speed constants
+            this.tumbleTimer = C.ROCKET_TUMBLE_DURATION; // Use constant
+            
+            // Set rotation velocity
             const minRotSpeed = 3.0 * Math.PI; // Radians per second
             const maxRotSpeed = 5.0 * Math.PI;
             this.rotationVelocity = (Math.random() * (maxRotSpeed - minRotSpeed) + minRotSpeed) * (Math.random() < 0.5 ? 1 : -1);
+            this.rotationAngle = 0; // Start rotation from 0
+            
             this.isKicking = false; // Cancel kick if tumbling
             this.kickTimer = 0;
             // TODO: Play tumble/stun sound?
+            console.log("Player started tumbling!");
         }
     }
 
@@ -791,6 +806,43 @@ export class Player {
         this.sizeMultiplier = 1.0;
         this.updateSizeAttributes(); // Revert size change
         console.log("Big Player Deactivated.");
+    }
+
+    public fireRocket(): Rocket | null {
+        // Check conditions BEFORE consuming ammo
+        // console.log(`DEBUG: Attempting fireRocket. HasLauncher=${this.hasRocketLauncher}, Ammo=${this.rocketAmmo}, Stunned=${this.isStunned}, Tumbling=${this.isTumbling}`);
+        if (!this.hasRocketLauncher || this.rocketAmmo <= 0 || this.isStunned || this.isTumbling) {
+            return null; // Cannot fire
+        }
+        // console.log(` -> Checks passed!`);
+
+        this.rocketAmmo--;
+        console.log(`Player ${this.facingDirection === 1 ? 1 : 2} fired rocket! Ammo left: ${this.rocketAmmo}`);
+
+        // Calculate spawn position (e.g., slightly in front and above feet)
+        const spawnOffsetY = -this.torsoLength * 0.5; // Mid-torso approx
+        const spawnOffsetX = (this.headRadius + 10) * this.facingDirection; // Slightly in front
+        const spawnX = this.x + spawnOffsetX;
+        const spawnY = this.y + spawnOffsetY;
+
+        // Calculate velocity
+        const rocketVx = C.ROCKET_SPEED * this.facingDirection;
+        const rocketVy = 0; // Fire horizontally for now
+
+        // Create the rocket instance
+        const newRocket = new Rocket(spawnX, spawnY, rocketVx, rocketVy, this);
+
+        // console.log(` -> Rocket Obj Created: Pos=(${newRocket.x.toFixed(0)},${newRocket.y.toFixed(0)}), Vel=(${newRocket.vx.toFixed(0)},${newRocket.vy.toFixed(0)})`);
+
+        // Play fire sound
+        audioManager.playSound('ROCKET_FIRE_1'); // Assume this sound exists
+
+        if (this.rocketAmmo <= 0) {
+            this.hasRocketLauncher = false; // Remove launcher when out of ammo
+            console.log(`Player ${this.facingDirection === 1 ? 1 : 2} ran out of rockets.`);
+        }
+
+        return newRocket;
     }
 
     // Helper to apply size multiplier to dimensions

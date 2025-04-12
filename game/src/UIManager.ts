@@ -9,10 +9,14 @@ export interface UIGameState {
     p1SpeedBoostTimer?: number;
     p1SuperJumpTimer?: number;
     p1BigPlayerTimer?: number;
+    p1HasRocketLauncher?: boolean;
+    p1RocketAmmo?: number;
     // Player 2 Status
     p2SpeedBoostTimer?: number;
     p2SuperJumpTimer?: number;
     p2BigPlayerTimer?: number;
+    p2HasRocketLauncher?: boolean;
+    p2RocketAmmo?: number;
     // Global Status
     ballIsFrozen?: boolean;
     ballFreezeTimer?: number; // Maybe display time remaining?
@@ -114,6 +118,12 @@ export class UIManager {
             this.ctx.fillText(`BIG! ${gameState.p1BigPlayerTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
             p1StatusY += fontSize + 2;
         }
+        if (gameState.p1HasRocketLauncher && gameState.p1RocketAmmo !== undefined && gameState.p1RocketAmmo > 0) {
+            this.ctx.fillStyle = '#FF4500'; // Orange for rockets
+            this.ctx.fillText(`ROCKETS: ${gameState.p1RocketAmmo}`, p1StatusX, p1StatusY);
+            this.ctx.fillStyle = C.WHITE; // Reset color
+            p1StatusY += fontSize + 2;
+        }
 
         // Player 2 Status Text
         const p2StatusX = C.SCREEN_WIDTH * 0.75;
@@ -128,6 +138,12 @@ export class UIManager {
         }
         if (gameState.p2BigPlayerTimer && gameState.p2BigPlayerTimer > 0) {
             this.ctx.fillText(`BIG! ${gameState.p2BigPlayerTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            p2StatusY += fontSize + 2;
+        }
+        if (gameState.p2HasRocketLauncher && gameState.p2RocketAmmo !== undefined && gameState.p2RocketAmmo > 0) {
+             this.ctx.fillStyle = '#FF4500'; // Orange for rockets
+            this.ctx.fillText(`ROCKETS: ${gameState.p2RocketAmmo}`, p2StatusX, p2StatusY);
+            this.ctx.fillStyle = C.WHITE; // Reset color
             p2StatusY += fontSize + 2;
         }
     }
