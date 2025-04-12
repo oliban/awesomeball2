@@ -114,6 +114,30 @@ export class ParticleSystem {
                     this.addParticle(new Particle(x, y, vx, vy, lifespan, color, radius, gravityEffect, pType));
                 }
                 break;
+            case 'rocket_smoke': // Type: smoke (greyish)
+                const smokeCount = options.count !== undefined ? options.count : 1; // Emit 1-2 per interval typically
+                const baseSpeed = options.baseSpeed || 50; // Rocket's speed helps determine trail speed
+                for (let i = 0; i < smokeCount; i++) {
+                    // Emit slightly behind the rocket position (options.x, options.y)
+                    const offsetX = (options.vx || 0) * -0.02; // Small offset back
+                    const offsetY = (options.vy || 0) * -0.02;
+
+                    // Velocity mostly opposite to rocket, with some spread
+                    const spreadAngle = Math.PI / 4; // 45 degree spread
+                    const baseAngle = Math.atan2(options.vy || 0, options.vx || 0) + Math.PI; // Opposite direction
+                    const angle = baseAngle + (Math.random() * spreadAngle - spreadAngle / 2);
+
+                    const speed = baseSpeed * (Math.random() * 0.2 + 0.1); // Trail speed is fraction of rocket speed
+                    const vx = Math.cos(angle) * speed;
+                    const vy = Math.sin(angle) * speed;
+                    const lifespan = Math.random() * 0.5 + 0.3; // Shorter lifespan for smoke trail
+                    let radius = Math.random() * 1.5 + 1.0;
+                    radius *= scale; // Apply scale? Maybe not for rocket trail
+                    const color = `rgba(150, 150, 150, ${Math.random() * 0.3 + 0.4})`; // Greyish smoke, variable alpha
+                    const gravityEffect = 0.01; // Minimal gravity
+                    this.addParticle(new Particle(x + offsetX, y + offsetY, vx, vy, lifespan, color, radius, gravityEffect, 'smoke'));
+                }
+                break;
         }
     }
 

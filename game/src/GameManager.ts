@@ -611,7 +611,7 @@ export class GameManager {
                 if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.KICK)) {
                     // If player has launcher, try to fire, otherwise do a normal kick
                     if (this.player1.hasRocketLauncher) {
-                        const newRocket = this.player1.fireRocket(); // Attempt to fire
+                        const newRocket = this.player1.fireRocket(this.particleSystem); // Attempt to fire
                         if (newRocket) {
                             this.activeRockets.push(newRocket); // Add if successful
                         }
@@ -641,7 +641,7 @@ export class GameManager {
                 if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.KICK)) {
                     // If player has launcher, try to fire, otherwise do a normal kick
                     if (this.player2.hasRocketLauncher) {
-                        const newRocket = this.player2.fireRocket(); // Attempt to fire
+                        const newRocket = this.player2.fireRocket(this.particleSystem); // Attempt to fire
                         if (newRocket) {
                             this.activeRockets.push(newRocket); // Add if successful
                         }
@@ -920,7 +920,7 @@ export class GameManager {
         const blastRadiusSq = C.ROCKET_BLAST_RADIUS * C.ROCKET_BLAST_RADIUS;
 
         // Apply effects to Players
-        for (const player of players) {
+        players.forEach(player => {
             const dx = player.x - x;
             const dy = (player.y - player.torsoLength / 2) - y; // Use player torso center approx
             const distSq = dx * dx + dy * dy;
@@ -943,16 +943,11 @@ export class GameManager {
                     pushVecY = Math.sin(randomAngle);
                 }
 
-                // Apply force
-                player.vx += pushVecX * forceMagnitude;
-                player.vy += pushVecY * forceMagnitude - C.ROCKET_PLAYER_UPWARD_BOOST;
-                
-                player.isJumping = true; // Ensure gravity applies
-                player.isBeingPushedBack = false; // Cancel kick pushback if hit by explosion
-                player.pushbackTimer = 0;
-                player.startTumble(); // TUMBLE!
+                // Add upward force (negative Y) and some horizontal pushback
+                player.vy = C.EXPLOSION_UPWARD_FORCE + (pushVecY * 0.3); // Strong upward force + some outward push
+                player.startTumble(); // Ensure player tumbles
             }
-        }
+        });
 
         // Apply effects to Ball
         const dxBall = this.ball.x - x;

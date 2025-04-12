@@ -143,9 +143,13 @@ export const PUSHBACK_DURATION = 0.2; // Duration (in seconds) the player is pus
 // ... existing code ... 
 
 // Rocket Launcher Constants
-export const ROCKET_SPEED = 450; // Pixels per second
-export const ROCKET_BLAST_RADIUS = 80; // Pixels
+export const ROCKET_SPEED = 450; // pixels per second
+export const ROCKET_BLAST_RADIUS = 80; // pixels
 export const ROCKET_EXPLOSION_FORCE = 800; // Magnitude of pushback
 export const ROCKET_PLAYER_UPWARD_BOOST = 150; // Extra upward push for players in blast
 export const ROCKET_BALL_UPWARD_BOOST = 100; // Upward push for ball in blast
-export const ROCKET_TUMBLE_DURATION = 1.5; // Seconds player tumbles after explosion 
+export const ROCKET_TUMBLE_DURATION = 1.5; // seconds player tumbles after hit
+export const EXPLOSION_RADIUS = 80; // pixels
+export const EXPLOSION_UPWARD_FORCE = -400; // pixels/sec vertical velocity applied on hit
+
+// Other constants as needed... 

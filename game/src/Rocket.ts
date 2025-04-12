@@ -2,6 +2,7 @@ import * as C from './Constants';
 import { Player } from './Player';
 import { Ball } from './Ball';
 import { audioManager } from './AudioManager';
+import { ParticleSystem } from './ParticleSystem';
 
 // TODO: Consider adding ParticleSystem integration for smoke trail
 
@@ -16,8 +17,11 @@ export class Rocket {
     private height: number = 8;
     private angle: number = 0; // Angle of flight based on velocity
     public lastPos: { x: number, y: number }; // For visual explosion positioning - Made public
+    private particleSystem: ParticleSystem;
+    private smokeEmitTimer: number = 0;
+    private smokeEmitInterval: number = 0.03; // Emit smoke every 0.03 seconds
 
-    constructor(x: number, y: number, vx: number, vy: number, owner: Player) {
+    constructor(x: number, y: number, vx: number, vy: number, owner: Player, particleSystem: ParticleSystem) {
         this.x = x;
         this.y = y;
         this.vx = vx;
@@ -25,6 +29,7 @@ export class Rocket {
         this.owner = owner;
         this.angle = Math.atan2(vy, vx);
         this.lastPos = { x, y };
+        this.particleSystem = particleSystem;
         console.log(`Rocket created by Player ${owner.teamColor === '#DCDCDC' ? 1: 2} at (${x.toFixed(0)}, ${y.toFixed(0)}) with velocity (${vx.toFixed(0)}, ${vy.toFixed(0)})`); // Basic identification
     }
 
@@ -36,6 +41,20 @@ export class Rocket {
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.angle = Math.atan2(this.vy, this.vx);
+
+        // --- Emit Smoke Trail --- 
+        this.smokeEmitTimer += dt;
+        if (this.smokeEmitTimer >= this.smokeEmitInterval) {
+            this.smokeEmitTimer -= this.smokeEmitInterval;
+            const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+            // Emit slightly behind the center
+            const trailX = this.x - Math.cos(this.angle) * (this.width / 2 + 2); 
+            const trailY = this.y - Math.sin(this.angle) * (this.width / 2 + 2);
+            this.particleSystem.emit('rocket_smoke', trailX, trailY, 1, 
+                { vx: this.vx, vy: this.vy, baseSpeed: speed } // Pass rocket velocity for particle logic
+            );
+        }
+        // ------------------------
 
         console.log(`DEBUG: Rocket Update - Pos=(${this.x.toFixed(0)},${this.y.toFixed(0)})`); // Log position
 

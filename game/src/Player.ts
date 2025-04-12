@@ -3,6 +3,7 @@
 import * as C from './Constants';
 import { audioManager } from './AudioManager'; // Import the AudioManager
 import { Rocket } from './Rocket'; // Import Rocket class
+import { ParticleSystem } from './ParticleSystem'; // Import ParticleSystem class
 
 // Basic type for representing points or vectors
 type Point = {
@@ -346,7 +347,40 @@ export class Player {
         drawShoe(leftFootPos, this.facingDirection);
         drawShoe(rightFootPos, this.facingDirection);
 
-        ctx.restore(); // Restore context state
+        // 7. Draw Rocket Launcher if equipped
+        if (this.hasRocketLauncher) {
+            ctx.save();
+            // Position near the hip/lower torso, slightly offset
+            const launcherWidth = this.armLength * 1.1; // Slightly longer than arm
+            const launcherHeight = this.limbWidth * 0.8; // Slightly thinner than limbs
+            const verticalOffset = -this.legLength - this.torsoLength * 0.3; // Position relative to feet Y
+            const horizontalOffset = this.facingDirection * (this.limbWidth * 0.5);
+
+            ctx.translate(this.x + horizontalOffset, this.y + verticalOffset);
+            // Keep launcher horizontal (no rotation applied here relative to player)
+            // If player tumbles, the ctx is already rotated, so the launcher rotates with the player.
+            // The launcher itself is drawn horizontally along the translated context's x-axis.
+
+            // Adjust drawing origin based on facing direction so nozzle points outwards
+            const drawOriginX = this.facingDirection === 1 ? 0 : -launcherWidth;
+
+            // Draw launcher body (grey)
+            ctx.fillStyle = '#808080'; // Grey
+            ctx.fillRect(drawOriginX, -launcherHeight / 2, launcherWidth, launcherHeight);
+            ctx.strokeStyle = C.BLACK;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(drawOriginX, -launcherHeight / 2, launcherWidth, launcherHeight);
+
+            // Optional: Draw a small nozzle/tip
+            // Position nozzle at the correct end based on facing direction
+            const nozzleX = this.facingDirection === 1 ? launcherWidth : -5;
+            ctx.fillStyle = '#505050'; // Darker grey
+            ctx.fillRect(drawOriginX + nozzleX, -launcherHeight / 3, 5, launcherHeight * 0.66);
+
+            ctx.restore();
+        }
+
+        ctx.restore(); // Restore context state (main restore from draw method start)
     }
 
     /**
@@ -808,7 +842,7 @@ export class Player {
         console.log("Big Player Deactivated.");
     }
 
-    public fireRocket(): Rocket | null {
+    public fireRocket(particleSystem: ParticleSystem): Rocket | null {
         // Check conditions BEFORE consuming ammo
         // console.log(`DEBUG: Attempting fireRocket. HasLauncher=${this.hasRocketLauncher}, Ammo=${this.rocketAmmo}, Stunned=${this.isStunned}, Tumbling=${this.isTumbling}`);
         if (!this.hasRocketLauncher || this.rocketAmmo <= 0 || this.isStunned || this.isTumbling) {
@@ -819,18 +853,28 @@ export class Player {
         this.rocketAmmo--;
         console.log(`Player ${this.facingDirection === 1 ? 1 : 2} fired rocket! Ammo left: ${this.rocketAmmo}`);
 
-        // Calculate spawn position (e.g., slightly in front and above feet)
-        const spawnOffsetY = -this.torsoLength * 0.5; // Mid-torso approx
-        const spawnOffsetX = (this.headRadius + 10) * this.facingDirection; // Slightly in front
-        const spawnX = this.x + spawnOffsetX;
-        const spawnY = this.y + spawnOffsetY;
+        // --- Calculate Spawn Position from Launcher Nozzle --- 
+        const launcherWidth = this.armLength * 1.1; 
+        const launcherHeight = this.limbWidth * 0.8;
+        const verticalOffset = -this.legLength - this.torsoLength * 0.3; // Same as draw logic
+        const horizontalOffset = this.facingDirection * (this.limbWidth * 0.5); // Same as draw logic
+
+        // Nozzle position relative to player's base coordinates (this.x, this.y)
+        const nozzleTipOffset = this.facingDirection === 1 ? launcherWidth + 5 : -5; // Offset from launcher origin
+        const launcherOriginX = this.x + horizontalOffset;
+        const launcherOriginY = this.y + verticalOffset;
+
+        // Spawn slightly beyond the nozzle tip in the facing direction
+        const spawnX = launcherOriginX + (this.facingDirection * nozzleTipOffset) + (this.facingDirection * 5); // Add 5 units out
+        const spawnY = launcherOriginY; // Y position is centered on the launcher height
+        // -----------------------------------------------------
 
         // Calculate velocity
-        const rocketVx = C.ROCKET_SPEED * this.facingDirection;
-        const rocketVy = 0; // Fire horizontally for now
+        const rocketVx = this.facingDirection * C.ROCKET_SPEED; // Use constant
+        const rocketVy = 0; // Fires horizontally for now
 
         // Create the rocket instance
-        const newRocket = new Rocket(spawnX, spawnY, rocketVx, rocketVy, this);
+        const newRocket = new Rocket(spawnX, spawnY, rocketVx, rocketVy, this, particleSystem);
 
         // console.log(` -> Rocket Obj Created: Pos=(${newRocket.x.toFixed(0)},${newRocket.y.toFixed(0)}), Vel=(${newRocket.vx.toFixed(0)},${newRocket.vy.toFixed(0)})`);
 
