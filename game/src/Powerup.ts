@@ -23,7 +23,13 @@ export class Powerup {
     public hasParachute: boolean = true; // Most powerups start with one
 
     private driftSpeed: number = 30; // Horizontal drift speed
-    private descendSpeed: number = 100; // Vertical descend speed
+    private descendSpeed: number = 80; // SLIGHTLY slower descent with chute
+
+    // Sway properties
+    private swayTimer: number = 0;
+    private swayMagnitude: number = 8; // Max horizontal offset (Reduced)
+    private swayFrequency: number = 2.0; // Oscillations per second
+    public currentSwayOffset: number = 0; // Public for easy access in draw
 
     constructor(x: number, y: number, type: PowerupType) {
         this.x = x;
@@ -49,11 +55,19 @@ export class Powerup {
                 this.x = Math.max(0, Math.min(this.x, C.SCREEN_WIDTH - this.width)); // Clamp position
             }
 
+            // Update Sway if parachuting
+            if (this.hasParachute) {
+                this.swayTimer += dt;
+                this.currentSwayOffset = Math.sin(this.swayTimer * this.swayFrequency * 2 * Math.PI) * this.swayMagnitude;
+            } else {
+                this.currentSwayOffset = 0; // Stop swaying when chute detaches
+            }
+
             // Detach parachute when near the ground
             if (this.hasParachute && this.y > C.GROUND_Y - (this.height * 3)) { // Detach a bit higher
                 this.hasParachute = false;
-                // Optional: Slightly change physics (e.g., stop drifting)
-                // this.vx = 0;
+                this.vy = 150; // Fall a bit faster without chute
+                this.currentSwayOffset = 0; // Ensure sway stops
             }
         } else {
             // Landed on the ground
@@ -72,14 +86,17 @@ export class Powerup {
     draw(ctx: CanvasRenderingContext2D): void {
         if (!this.isActive) return;
 
-        const boxX = this.x;
+        // Apply sway offset to the base X position for drawing
+        const baseDrawX = this.x + this.currentSwayOffset;
+
+        const boxX = baseDrawX; // Use swayed X for the box
         const boxY = this.y;
         const boxW = this.width;
         const boxH = this.height;
 
         // Draw Parachute if applicable
         if (this.hasParachute) {
-            const chuteWidth = boxW * 2.5;
+            const chuteWidth = boxW * 2.0; // Slightly smaller chute
             const chuteHeight = boxH * 1.5;
             const chuteX = boxX + boxW / 2 - chuteWidth / 2;
             const chuteY = boxY - chuteHeight - boxH * 0.2; // Position above the box
@@ -96,21 +113,102 @@ export class Powerup {
 
             // Draw lines from canopy edges to box corners
             ctx.beginPath();
-            ctx.moveTo(chuteX, chuteY + chuteHeight); // Left canopy edge
-            ctx.lineTo(boxX, boxY); // Top-left box corner
-            ctx.moveTo(chuteX + chuteWidth, chuteY + chuteHeight); // Right canopy edge
-            ctx.lineTo(boxX + boxW, boxY); // Top-right box corner
+            // Connect lines to the *original* box position, not the swayed one, for visual effect
+            ctx.moveTo(chuteX, chuteY + chuteHeight); // Left canopy edge (also swayed)
+            ctx.lineTo(boxX, boxY); // Top-left corner of swayed box
+            ctx.moveTo(chuteX + chuteWidth, chuteY + chuteHeight); // Right canopy edge (also swayed)
+            ctx.lineTo(boxX + boxW, boxY); // Top-right corner of swayed box
             ctx.stroke();
         }
 
-        // Draw the Powerup Box itself (over chute lines)
-        ctx.fillStyle = 'purple'; // Placeholder color
-        ctx.fillRect(boxX, boxY, boxW, boxH);
-        ctx.strokeStyle = C.WHITE;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(boxX, boxY, boxW, boxH);
+        // --- Draw Specific Icon based on Type --- 
+        ctx.save();
+        ctx.translate(boxX + boxW / 2, boxY + boxH / 2); // Center coordinates for easier drawing
 
-        // TODO: Draw specific icon inside the box based on type
+        // Draw background box first
+        ctx.fillStyle = C.WHITE; // White background
+        ctx.strokeStyle = C.BLACK; 
+        ctx.lineWidth = 1; // Thinner border for the box
+        ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+        ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+        // Common style for icons (applied AFTER box)
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = C.BLACK;
+
+        switch (this.type) {
+            case PowerupType.SPEED_BOOST:
+                ctx.fillStyle = '#FFFF00'; // Yellow
+                ctx.beginPath(); // Lightning bolt shape
+                ctx.moveTo(-boxW * 0.1, -boxH * 0.4);
+                ctx.lineTo(boxW * 0.3, 0);
+                ctx.lineTo(boxW * 0.1, boxH * 0.4);
+                ctx.lineTo(-boxW * 0.3, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case PowerupType.BIG_PLAYER:
+                ctx.fillStyle = '#FF0000'; // Red
+                ctx.beginPath(); // Upwards arrow
+                ctx.moveTo(0, -boxH * 0.3);
+                ctx.lineTo(boxW * 0.3, 0);
+                ctx.lineTo(boxW * 0.1, 0);
+                ctx.lineTo(boxW * 0.1, boxH * 0.3);
+                ctx.lineTo(-boxW * 0.1, boxH * 0.3);
+                ctx.lineTo(-boxW * 0.1, 0);
+                ctx.lineTo(-boxW * 0.3, 0);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                break;
+            case PowerupType.SUPER_JUMP:
+                ctx.fillStyle = '#00FF00'; // Green
+                ctx.beginPath(); // Spring shape (simplified)
+                ctx.moveTo(-boxW * 0.3, boxH * 0.3);
+                ctx.quadraticCurveTo(0, -boxH * 0.1, boxW * 0.3, boxH * 0.3);
+                ctx.moveTo(-boxW * 0.3, boxH * 0.1);
+                ctx.quadraticCurveTo(0, -boxH * 0.3, boxW * 0.3, boxH * 0.1);
+                ctx.stroke(); // Just stroke for spring
+                break;
+            case PowerupType.BALL_FREEZE:
+                ctx.fillStyle = '#00FFFF'; // Cyan
+                ctx.beginPath(); // Snowflake shape (simplified)
+                for (let i = 0; i < 6; i++) {
+                    const angle = Math.PI / 3 * i;
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(Math.cos(angle) * boxW * 0.4, Math.sin(angle) * boxH * 0.4);
+                }
+                ctx.stroke();
+                // Draw a circle in the middle
+                ctx.beginPath();
+                ctx.arc(0, 0, boxW * 0.15, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case PowerupType.ROCKET_LAUNCHER:
+                ctx.fillStyle = '#808080'; // Grey
+                // Simple rocket shape
+                ctx.fillRect(-boxW * 0.1, -boxH * 0.4, boxW * 0.2, boxH * 0.8);
+                ctx.beginPath(); // Triangle nose
+                ctx.moveTo(-boxW * 0.1, -boxH * 0.4);
+                ctx.lineTo(boxW * 0.1, -boxH * 0.4);
+                ctx.lineTo(0, -boxH * 0.6);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                // Fins (optional)
+                ctx.fillRect(-boxW * 0.2, boxH * 0.2, boxW * 0.4, boxH * 0.1);
+                break;
+            default:
+                // Fallback to purple box if type is unknown
+                ctx.fillStyle = 'purple'; 
+                ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+                ctx.strokeStyle = C.WHITE;
+                ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+        }
+
+        ctx.restore();
+        // ---------------------------------------
     }
 
     // Helper method for collision detection
