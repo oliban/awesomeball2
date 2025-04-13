@@ -26,7 +26,8 @@ export class PowerupManager {
             PowerupType.BIG_PLAYER, 
             PowerupType.SUPER_JUMP, 
             PowerupType.BALL_FREEZE,
-            PowerupType.ROCKET_LAUNCHER
+            PowerupType.ROCKET_LAUNCHER,
+            PowerupType.BOW
         ];
         const randomIndex = Math.floor(Math.random() * availableTypes.length);
         const type = availableTypes[randomIndex];

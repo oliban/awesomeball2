@@ -158,6 +158,6 @@ export const ARROW_GRAVITY = 400; // Gravity affecting arrows (lower than player
 export const ARROW_DAMAGE_FORCE = 500; // Pushback force on hit
 export const ARROW_TUMBLE_DURATION = 1.0; // seconds player tumbles after hit by arrow
 export const BOW_SWAY_SPEED = 0.3; // Cycles per second for the auto-aim sway
-export const BOW_SWAY_ANGLE_MAX = Math.PI / 5; // Increased max angle (was PI / 10 -> approx 36 degrees)
+export const BOW_SWAY_ANGLE_MAX = Math.PI / 3; // Increased max angle again (was PI / 5 -> approx 60 degrees total)
 
 // Other constants as needed... 

@@ -64,8 +64,8 @@ export class Arrow {
             this.x += this.vx * dt;
             this.y += this.vy * dt;
 
-            // Update angle based on velocity vector (using -vy for standard math angle)
-            this.angle = Math.atan2(-this.vy, this.vx);
+            // Update angle based on velocity vector
+            this.angle = Math.atan2(this.vy, this.vx);
 
             // Simple out-of-bounds check (deactivate)
             // Add check for hitting ground
@@ -125,7 +125,7 @@ export class Arrow {
             this.x = hitX; // Set position to exact hit point
             this.y = hitY;
             // Keep angle from moment of impact for visual orientation
-            this.angle = Math.atan2(-this.vy, this.vx); // Use -vy for standard math angle
+            this.angle = Math.atan2(this.vy, this.vx);
             this.vx = 0;
             this.vy = 0;
 
@@ -160,13 +160,32 @@ export class Arrow {
     draw(ctx: CanvasRenderingContext2D): void {
         if (!this.isActive) return;
 
+        // --- REMOVED DEBUG DRAWING --- 
+        // Draw Arrow Position
+        // ctx.fillStyle = 'magenta'; // Use a distinct color
+        // ctx.fillRect(this.x - 2, this.y - 2, 4, 4);
+        // 
+        // Draw Velocity Vector (scaled for visibility)
+        // ctx.strokeStyle = 'cyan'; // Distinct color
+        // ctx.lineWidth = 1;
+        // ctx.beginPath();
+        // ctx.moveTo(this.x, this.y);
+        // const scale = 0.1; // Scale factor for vector visibility
+        // Draw line based directly on stored vx, vy
+        // ctx.lineTo(this.x + this.vx * scale, this.y + this.vy * scale); 
+        // ctx.stroke();
+        // --- END REMOVED DEBUG DRAWING ---
+
+        // UNCOMMENTED: Original Drawing Code 
+        
         ctx.save();
         ctx.translate(this.x, this.y);
-         // Rotate based on standard math angle (0=right, positive=CCW)
-        ctx.rotate(-this.angle); // Negate angle because canvas rotation is CW
+         // Rotate based on the calculated angle (0=right, positive=CW in canvas)
+         // ctx.rotate(-this.angle); // Reverting TEST
+         ctx.rotate(this.angle); // Back to original
 
         // Draw arrow shaft
-        ctx.strokeStyle = C.BLACK;
+        ctx.strokeStyle = this.owner.teamColor;
         ctx.lineWidth = this.thickness;
         ctx.beginPath();
         ctx.moveTo(-this.width / 2, 0); // Tail

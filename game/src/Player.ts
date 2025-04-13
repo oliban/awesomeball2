@@ -465,45 +465,64 @@ export class Player {
             ctx.save();
             const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.6); 
             const bowVerticalOffset = -(this.legLength + this.torsoLength * 0.5); 
-            ctx.translate(bowHorizontalOffset, bowVerticalOffset); // Translate relative to feet
-            ctx.rotate(this.aimAngle); 
+            ctx.translate(bowHorizontalOffset, bowVerticalOffset); // Translate to pivot point
+            
+            // Calculate effective angle for drawing (matches firing angle)
+            const effectiveDrawAngle = this.facingDirection === 1 
+                               ? this.aimAngle 
+                               : Math.PI - this.aimAngle; // Mirror world angle if facing left
+            // ctx.rotate(effectiveDrawAngle); // REMOVE context rotation
 
-            // --- Draw Bow Shape ---
-            const bowLength = this.armLength * 1.8;
-            const bowThickness = this.limbWidth * 0.5;
-            const bowCurveDepth = bowLength * 0.15;
-            const effectiveBowCurveDepth = bowCurveDepth * this.facingDirection;
+            // --- Draw Bow Shape without context rotation --- 
+            const bowLength = this.armLength * 2.2;
+            const bowThickness = this.limbWidth * 0.6;
+            const bowCurveDepth = bowLength * 0.2;
+            const stringHandleOffset = -bowThickness * 0.8; // Offset string slightly towards player (-X relative to DRAW angle)
+
+            // Calculate end points based on effectiveDrawAngle
+            const cosA = Math.cos(effectiveDrawAngle);
+            const sinA = Math.sin(effectiveDrawAngle);
+            const halfLen = bowLength / 2;
+            
+            // String endpoints (offset back along perpendicular to effectiveDrawAngle)
+            const stringOffsetX = stringHandleOffset * (-sinA); // Perpendicular X
+            const stringOffsetY = stringHandleOffset * cosA;  // Perpendicular Y
+            const stringTopX = stringOffsetX - sinA * halfLen;
+            const stringTopY = stringOffsetY + cosA * halfLen;
+            const stringBottomX = stringOffsetX + sinA * halfLen;
+            const stringBottomY = stringOffsetY - cosA * halfLen;
+
+            // Curve control point (outwards along effectiveDrawAngle)
+            const curveControlX = stringOffsetX + cosA * bowCurveDepth; // Outward X
+            const curveControlY = stringOffsetY - sinA * bowCurveDepth; // Outward Y (needs -sin for canvas Y down)
+
+            // --- Draw Bow String ---            
+            ctx.strokeStyle = '#E0E0E0'; 
+            ctx.lineWidth = 1.5; 
+            ctx.lineCap = 'butt'; 
+            ctx.beginPath();
+            ctx.moveTo(stringTopX, stringTopY); 
+            ctx.lineTo(stringBottomX, stringBottomY);  
+            ctx.stroke();
+
+            // --- Draw Bow Curve --- 
             ctx.strokeStyle = '#8B4513';
             ctx.lineWidth = bowThickness;
-            ctx.lineCap = 'round';
+            ctx.lineCap = 'round'; 
             ctx.beginPath();
-            ctx.moveTo(0, -bowLength / 2);
-            ctx.quadraticCurveTo(effectiveBowCurveDepth, 0, 0, bowLength / 2);
+            ctx.moveTo(stringTopX, stringTopY); 
+            ctx.quadraticCurveTo(curveControlX, curveControlY, stringBottomX, stringBottomY); 
             ctx.stroke();
 
-            // --- Draw Bow String ---
-            // Draw slightly thicker and more opaque string for visibility
-            ctx.strokeStyle = '#E0E0E0'; // Lighter Grey string color
-            ctx.lineWidth = 1.5; 
-            ctx.lineCap = 'butt'; // Flat ends for string
-
-            ctx.beginPath();
-            ctx.moveTo(0, -bowLength / 2); // Top tip
-            ctx.lineTo(0, bowLength / 2);  // Bottom tip (straight string for now)
-            ctx.stroke();
-
-            // --- DEBUG: Draw Aiming Line ---
+            // --- Debug Aiming Line (drawn along effectiveDrawAngle) --- 
             ctx.strokeStyle = 'red';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(0, 0); // Start at bow center (already translated & rotated)
-            // Draw line along aiming direction, adjusted by facing direction
-            ctx.lineTo(50 * this.facingDirection, 0); // Use facing direction
+            ctx.moveTo(0, 0); // Start at pivot
+            // Draw line 50 units along effectiveDrawAngle
+            ctx.lineTo(Math.cos(effectiveDrawAngle) * 50, -Math.sin(effectiveDrawAngle) * 50); 
             ctx.stroke();
             // --- End Debug Line ---
-
-            // Restore previous line width if needed (assuming default is this.limbWidth)
-            ctx.lineWidth = this.limbWidth;
 
             ctx.restore();
         }
@@ -946,7 +965,7 @@ export class Player {
      * NOTE: Returns position in world coordinates.
      */
     public getBowCenterPosition(): Point {
-        const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.4); // Offset in facing direction
+        const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.6); // Corrected multiplier to 0.6
         const bowVerticalOffset = -this.legLength - this.torsoLength * 0.5; // Position near mid-torso Y relative to feet
         const bowCenterX = this.x + bowHorizontalOffset;
         const bowCenterY = this.y + bowVerticalOffset;
@@ -1064,5 +1083,14 @@ export class Player {
             this.isBeingPushedBack = false; // Stop pushback?
             // Keep movement? Maybe allow shuffling?
         }
+    }
+
+    updateAim(targetX: number, targetY: number) {
+        const dx = targetX - this.x;
+        const dy = targetY - this.y; 
+        // Ensure this calculates WORLD angle directly (0=right, PI/2=up, -PI/2=down)
+        // Always use -dy because Y is inverted in canvas vs math angle.
+        this.aimAngle = Math.atan2(-dy, dx);
+        // console.log(`DEBUG updateAim P${this.facingDirection === 1 ? 1 : 2}: aimAngle=${this.aimAngle.toFixed(2)}`); // Optional log
     }
 } 

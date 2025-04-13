@@ -15,8 +15,6 @@ import { ArrowState } from './Arrow';
 // Add match point limit to constants if not already there
 const MATCH_POINT_LIMIT = 5; // Example limit
 const GOAL_RESET_DELAY = 1.5; // Seconds delay after goal
-const BOW_SWAY_SPEED = 0.5; // Example speed for bow sway
-const BOW_SWAY_ANGLE_MAX = 0.2; // Example max angle for bow sway
 
 export class GameManager {
     private ctx: CanvasRenderingContext2D;
@@ -682,8 +680,8 @@ export class GameManager {
                 
                 // --- Handle Auto-Aim Sway (Moved Before Input) --- 
                 const currentTime = performance.now() / 1000; // Get time in seconds
-                const swayPhase = currentTime * BOW_SWAY_SPEED * Math.PI * 2;
-                const swayAngle = Math.sin(swayPhase) * BOW_SWAY_ANGLE_MAX;
+                const swayPhase = currentTime * C.BOW_SWAY_SPEED * Math.PI * 2; // Use C. constant
+                const swayAngle = Math.sin(swayPhase) * C.BOW_SWAY_ANGLE_MAX; // Use C. constant
 
                 // Apply sway to Player 1 if they have a bow and are relatively idle
                 if (this.player1.hasBow && !this.player1.isKicking && !this.player1.isStunned && !this.player1.isTumbling) {
@@ -731,21 +729,28 @@ export class GameManager {
                     } else if (this.player1.hasBow && !this.player1.isItching) {
                         if (this.player1.arrowAmmo > 0) { // Check ammo
                             // FIRE ARROW
-                            console.log(`P1 FIRE BOW! Angle: ${this.player1.aimAngle.toFixed(2)} Ammo Left: ${this.player1.arrowAmmo - 1}`);
                             const arrowSpeed = C.ARROW_SPEED;
-                            const vx = Math.cos(this.player1.aimAngle) * arrowSpeed * this.player1.facingDirection; // Re-added facingDirection
-                            const vy = -Math.sin(this.player1.aimAngle) * arrowSpeed; // Vertical uses -sin for inverted Y
+                            // Determine effective angle based on world aim and facing direction
+                            const worldAimAngle = this.player1.aimAngle;
+                            const effectiveFireAngle = this.player1.facingDirection === 1 
+                                ? worldAimAngle 
+                                : Math.PI - worldAimAngle; // Mirror angle if facing left
+                            // Calculate vx and vy based on the effective angle
+                            const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
+                            const vy = -Math.sin(effectiveFireAngle) * arrowSpeed;
                             
-                            // Get precise start position from Player method
-                            const bowCenter = this.player1.getBowCenterPosition();
-                            // We might want a slight offset from the exact center along the aim angle
-                            const arrowSpawnOffset = 20; // How far in front of the bow center to spawn
-                            const startX = bowCenter.x + Math.cos(this.player1.aimAngle) * arrowSpawnOffset;
-                            const startY = bowCenter.y - Math.sin(this.player1.aimAngle) * arrowSpawnOffset; // Use -sin for inverted Y
+                            // SIMPLIFIED SPAWN: Approx shoulder height
+                            const startX = this.player1.x;
+                            const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5;
                             
-                            const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem); // Corrected constructor call (6 args)
+                            const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem);
                             this.activeArrows.push(newArrow);
                             this.player1.arrowAmmo--; // Decrement ammo
+                            // Check if out of ammo
+                            if (this.player1.arrowAmmo <= 0) {
+                                this.player1.hasBow = false;
+                                console.log("Player 1 ran out of arrows, bow removed.");
+                            }
                             // TODO: Add arrow firing sound effect
                         } else {
                             // Optional: Play out of ammo sound
@@ -783,21 +788,27 @@ export class GameManager {
                     } else if (this.player2.hasBow && !this.player2.isItching) {
                         if (this.player2.arrowAmmo > 0) { // Check ammo
                             // FIRE ARROW
-                            console.log(`P2 FIRE BOW! Angle: ${this.player2.aimAngle.toFixed(2)} Ammo Left: ${this.player2.arrowAmmo - 1}`);
-                            const arrowSpeed = C.ARROW_SPEED;
-                            const vx = Math.cos(this.player2.aimAngle) * arrowSpeed * this.player2.facingDirection; // Re-added facingDirection
-                            const vy = -Math.sin(this.player2.aimAngle) * arrowSpeed; // Vertical uses -sin for inverted Y
+                             // Determine effective angle based on world aim and facing direction
+                            const worldAimAngle = this.player2.aimAngle;
+                            const effectiveFireAngle = this.player2.facingDirection === 1
+                                ? worldAimAngle
+                                : Math.PI - worldAimAngle; // Mirror angle if facing left
+                            // Calculate vx and vy based on the effective angle
+                            const vx = Math.cos(effectiveFireAngle) * C.ARROW_SPEED;
+                            const vy = -Math.sin(effectiveFireAngle) * C.ARROW_SPEED;
                             
-                            // Get precise start position from Player method
-                            const bowCenter = this.player2.getBowCenterPosition();
-                            // We might want a slight offset from the exact center along the aim angle
-                            const arrowSpawnOffset = 20; // How far in front of the bow center to spawn
-                            const startX = bowCenter.x + Math.cos(this.player2.aimAngle) * arrowSpawnOffset;
-                            const startY = bowCenter.y - Math.sin(this.player2.aimAngle) * arrowSpawnOffset; // Use -sin for inverted Y
+                             // SIMPLIFIED SPAWN: Approx shoulder height
+                            const startX = this.player2.x;
+                            const startY = this.player2.y - this.player2.legLength - this.player2.torsoLength * 0.5;
 
-                            const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem); // Corrected constructor call (6 args)
+                            const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem);
                             this.activeArrows.push(newArrow);
                             this.player2.arrowAmmo--; // Decrement ammo
+                            // Check if out of ammo
+                            if (this.player2.arrowAmmo <= 0) {
+                                this.player2.hasBow = false;
+                                console.log("Player 2 ran out of arrows, bow removed.");
+                            }
                             // TODO: Add arrow firing sound effect
                         } else {
                              // Optional: Play out of ammo sound
