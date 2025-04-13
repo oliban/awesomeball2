@@ -207,8 +207,9 @@ export class Player {
     public hasRocketLauncher: boolean = false;
     public rocketAmmo: number = 0;
 
-    private readonly swordSwingDuration: number = 0.3; // Duration of swing (seconds)
-    private readonly swordSwingAngleMax: number = Math.PI * 0.8; // Total angle covered by swing
+    private readonly swordSwingDuration: number = 0.6; // INCREASED DURATION
+    private readonly swordSwingAngleMax: number = Math.PI * 1.5; // INCREASED ARC (270 deg)
+    private readonly swordLengthMultiplier: number = 3.0; // NEW: Bigger sword multiplier
 
     constructor(
         x: number,
@@ -549,19 +550,18 @@ export class Player {
         // 9. Draw Sword (Attached to right hand)
         if (this.isSword) {
             ctx.save();
-            // Translate to the RELATIVE right hand position calculated by the helper
-            ctx.translate(limbs.relRightHandPos.x, limbs.relRightHandPos.y); // Use helper result
+            ctx.translate(limbs.relRightHandPos.x, limbs.relRightHandPos.y);
 
             // Calculate sword angle (base depends on facing, modified by swing)
-            const baseAngle = this.facingDirection === 1 ? -Math.PI / 2.5 : Math.PI + Math.PI / 2.5; // Point more downwards
-            const currentSwordVisualAngle = baseAngle + this.swordAngle; // Use the animated swordAngle
+            const baseAngle = this.facingDirection === 1 ? Math.PI * 2/3 : Math.PI / 3 ; // NEW: Start more upwards
+            const currentSwordVisualAngle = baseAngle + this.swordAngle;
             ctx.rotate(currentSwordVisualAngle);
 
             // Draw the sword relative to the hand (rotated context)
-            const swordLength = this.armLength * 1.8;
-            const hiltLength = swordLength * 0.2;
+            const swordLength = this.armLength * this.swordLengthMultiplier;
+            const hiltLength = swordLength * 0.15;
             const bladeLength = swordLength - hiltLength;
-            const swordWidth = this.limbWidth * 0.5;
+            const swordWidth = this.limbWidth * 0.8;
 
             // Hilt (brown rectangle)
             ctx.fillStyle = '#8B4513'; // Brown
@@ -569,15 +569,15 @@ export class Player {
 
             // Blade (silver rectangle)
             ctx.fillStyle = '#C0C0C0'; // Silver
-            ctx.fillRect(hiltLength, -swordWidth / 2 * 0.6, bladeLength, swordWidth * 0.6); // Thinner blade
+            ctx.fillRect(hiltLength, -swordWidth / 2 * 0.7, bladeLength, swordWidth * 0.7);
 
             // Outline
             ctx.strokeStyle = C.BLACK;
             ctx.lineWidth = 1;
             ctx.strokeRect(0, -swordWidth / 2, hiltLength, swordWidth);
-            ctx.strokeRect(hiltLength, -swordWidth / 2 * 0.6, bladeLength, swordWidth * 0.6);
+            ctx.strokeRect(hiltLength, -swordWidth / 2 * 0.7, bladeLength, swordWidth * 0.7);
 
-            ctx.restore(); // Restore context from sword drawing
+            ctx.restore();
         }
 
         ctx.restore(); // Restore context from initial translate
@@ -655,19 +655,23 @@ export class Player {
             this.swordSwingTimer += dt;
             const swingProgress = Math.min(this.swordSwingTimer / this.swordSwingDuration, 1.0);
             
-            // Simple arc animation: 0 -> max -> 0 angle offset
-            // Ease in/out might look better, but let's start simple
-            const swingPhase = Math.sin(swingProgress * Math.PI); // Goes from 0 to 1 and back to 0
-            this.swordAngle = swingPhase * this.swordSwingAngleMax * (this.facingDirection === 1 ? 1 : -1); // Adjust direction
+            // NEW animation: Linear sweep over the full angle range
+            const startAngleOffset = 0; 
+            const endAngleOffset = -this.swordSwingAngleMax * (this.facingDirection === 1 ? 1 : -1);
+            this.swordAngle = lerp(startAngleOffset, endAngleOffset, swingProgress); 
 
             if (this.swordSwingTimer >= this.swordSwingDuration) {
                 this.isSwingingSword = false;
                 this.swordSwingTimer = 0;
-                this.swordAngle = 0; // Reset angle after swing
             }
         } else {
-            // Ensure angle is reset if not swinging
-            this.swordAngle = 0;
+            // Smoothly return swordAngle to 0 when not swinging
+            const returnSpeedFactor = 0.15; // Adjust speed (smaller = slower return)
+            this.swordAngle = lerp(this.swordAngle, 0, returnSpeedFactor); 
+            // Optional: Snap to 0 if very close to avoid tiny lingering angles
+            if (Math.abs(this.swordAngle) < 0.01) {
+                this.swordAngle = 0;
+            }
         }
 
         // Handle kicking OR regular movement/animations (only if NOT swinging sword)
@@ -1071,21 +1075,19 @@ export class Player {
 
         // --- Get Accurate Hand Position using Helper ---
         const limbs = this._getRelativeLimbPositions();
-        // Convert relative hand pos to absolute world coordinates
         const absRightHandPos: Point = {
             x: this.x + limbs.relRightHandPos.x,
             y: this.y + limbs.relRightHandPos.y
         };
-        // ----------------------------------------------
 
         // Use the same dimensions and base angle as in draw/collision calculation
-        const swordLength = this.armLength * 1.8;
-        const hiltLength = swordLength * 0.2;
-        const baseAngle = this.facingDirection === 1 ? -Math.PI / 2.5 : Math.PI + Math.PI / 2.5; // Point more downwards
-        const currentSwordWorldAngle = baseAngle + this.swordAngle; // Use the physics sword angle
+        const swordLength = this.armLength * this.swordLengthMultiplier;
+        const hiltLength = swordLength * 0.15;
+        const baseAngle = this.facingDirection === 1 ? Math.PI * 2/3 : Math.PI / 3 ; // NEW: Start more upwards (MATCH DRAW)
+        const currentSwordWorldAngle = baseAngle + this.swordAngle;
 
         // Calculate sword start (near hilt/guard) and end (tip) in world space
-        const swordStartOffset = hiltLength * 0.5;
+        const swordStartOffset = hiltLength * 0.5; // Keep offset relative to new hilt length
         const p1 = calculateEndPoint(absRightHandPos, swordStartOffset, currentSwordWorldAngle);
         const p2 = calculateEndPoint(absRightHandPos, swordLength, currentSwordWorldAngle);
 

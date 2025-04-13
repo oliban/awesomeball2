@@ -274,24 +274,48 @@ export class GameManager {
                         const momentumBoostVX = player.vx * momentumScaleFactor; 
                         const momentumBoostVY = player.vy * momentumScaleFactor;
 
-                        // Base Kick Force (use constants, maybe increase them)
-                        // Let's keep the 1.5x multiplier for now, adjust constants if needed
+                        // Base Kick Force (Horizontal)
                         const baseKickVx = player.facingDirection * C.BASE_KICK_FORCE_X * 1.5; 
-                        const baseKickVy = C.BASE_KICK_FORCE_Y * 1.5;
                         
-                        // Combine Base and Momentum
+                        // --- Adjust Base Vertical Kick Force based on Ball Height ---
+                        let adjustedBaseKickVy = C.BASE_KICK_FORCE_Y * 1.5; // Default upward force (negative value)
+                        const volleyThreshold = C.GROUND_Y - this.ball.radius * 2; // Ball center needs to be above this
+                    
+                        if (this.ball.y < volleyThreshold) {
+                            // It's a volley! Reduce upward force significantly.
+                            const volleyLiftFactor = 0.2; // Only 20% of the original upward force (make it much less negative)
+                            adjustedBaseKickVy *= volleyLiftFactor; 
+                            console.log(`Volley kick! Ball Y: ${this.ball.y.toFixed(0)}, Threshold: ${volleyThreshold.toFixed(0)}. Reduced base VY to ${adjustedBaseKickVy.toFixed(0)}`);
+                        }
+                        // ----------------------------------------------------------
+                        
+                        // Combine Base (using adjusted vertical) and Momentum
                         const finalKickVx = baseKickVx + momentumBoostVX;
-                        const finalKickVy = baseKickVy + momentumBoostVY;
+                        const finalKickVy = adjustedBaseKickVy + momentumBoostVY; // Use the adjusted vertical base
 
-                        console.log(`Kick Details: Base=(${baseKickVx.toFixed(0)}, ${baseKickVy.toFixed(0)}), Momentum=(${momentumBoostVX.toFixed(0)}, ${momentumBoostVY.toFixed(0)}), Final=(${finalKickVx.toFixed(0)}, ${finalKickVy.toFixed(0)})`);
+                        console.log(`Kick Details: Base=(${baseKickVx.toFixed(0)}, ${adjustedBaseKickVy.toFixed(0)}), Momentum=(${momentumBoostVX.toFixed(0)}, ${momentumBoostVY.toFixed(0)}), Initial Final=(${finalKickVx.toFixed(0)}, ${finalKickVy.toFixed(0)})`);
 
-                        // Apply the final combined force
-                        this.ball.applyKick(finalKickVx, finalKickVy);
+                        // --- ADD RANDOMNESS ---
+                        const originalAngle = Math.atan2(finalKickVy, finalKickVx);
+                        const originalMagnitude = Math.sqrt(finalKickVx * finalKickVx + finalKickVy * finalKickVy);
+
+                        const maxRandomAngleOffset = Math.PI / 18; // +/- 10 degrees (PI / 18 radians)
+                        const randomOffset = (Math.random() * 2 - 1) * maxRandomAngleOffset; // Random value between -maxOffset and +maxOffset
+                        const finalAngle = originalAngle + randomOffset;
+
+                        // Recalculate components with new angle, same magnitude
+                        const randomizedKickVx = Math.cos(finalAngle) * originalMagnitude;
+                        const randomizedKickVy = Math.sin(finalAngle) * originalMagnitude;
+                        // ----------------------
+
+                        console.log(`Kick Randomness: OrigAngle=${originalAngle.toFixed(2)}, Offset=${randomOffset.toFixed(2)}, FinalAngle=${finalAngle.toFixed(2)}`);
+
+                        // Apply the final RANDOMIZED force
+                        this.ball.applyKick(randomizedKickVx, randomizedKickVy);
                         
-                        this.particleSystem.emit('kick', kickPoint.x, kickPoint.y, 8, { kickDirection: player.facingDirection }); // Reduced count significantly (was 25)
+                        this.particleSystem.emit('kick', kickPoint.x, kickPoint.y, 8, { kickDirection: player.facingDirection });
 
                         kickAppliedThisFrame = true; 
-                        // TODO: Add kick sound
                         continue; // Skip other ball collisions for this player if kick connects
                     }
                 }
@@ -841,46 +865,46 @@ export class GameManager {
                 }
                 // Player 1 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.KICK)) {
+                    // ACTION 1: Always Kick
+                    this.player1.startKick(); 
+                
+                    // ACTION 2: Swing Sword if equipped
                     if (this.player1.isSword) {
-                        this.player1.startSwordSwing(); // Swing sword if equipped
-                    } else if (this.player1.hasRocketLauncher && !this.player1.isItching) {
+                        this.player1.startSwordSwing(); 
+                    } 
+                    
+                    // ACTION 3: Fire Rocket if equipped (and not itching)
+                    if (this.player1.hasRocketLauncher && !this.player1.isItching) {
                         const newRocket = this.player1.fireRocket(this.particleSystem);
                         if (newRocket) this.activeRockets.push(newRocket);
-                    } else if (this.player1.hasBow && !this.player1.isItching) {
-                        if (this.player1.arrowAmmo > 0) { // Check ammo
-                            // FIRE ARROW
+                    } 
+                    
+                    // ACTION 4: Fire Bow if equipped (and not itching)
+                    if (this.player1.hasBow && !this.player1.isItching) {
+                        if (this.player1.arrowAmmo > 0) { 
+                            // --- Fire Arrow Logic ---
                             const arrowSpeed = C.ARROW_SPEED;
-                            // Determine effective angle based on world aim and facing direction
-                            // Negate aimAngle again here for correct firing direction
-                            const worldAimAngle = -this.player1.aimAngle; 
+                            const worldAimAngle = -this.player1.aimAngle; // Negate sway angle
                             const effectiveFireAngle = this.player1.facingDirection === 1 
                                 ? worldAimAngle 
-                                : Math.PI - worldAimAngle; // Mirror angle if facing left
-                            // Calculate vx and vy based on the effective angle
+                                : Math.PI - worldAimAngle; 
                             const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
-                            const vy = -Math.sin(effectiveFireAngle) * arrowSpeed;
-                            
-                            // SIMPLIFIED SPAWN: Approx shoulder height
-                            const startX = this.player1.x;
-                            const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5;
-                            
+                            const vy = -Math.sin(effectiveFireAngle) * arrowSpeed; // Y is flipped in canvas
+                            const startX = this.player1.x; // Use player base x
+                            const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5; // Approx shoulder height
                             const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem);
                             this.activeArrows.push(newArrow);
-                            this.player1.arrowAmmo--; // Decrement ammo
-                            // Check if out of ammo
+                            this.player1.arrowAmmo--; 
                             if (this.player1.arrowAmmo <= 0) {
                                 this.player1.hasBow = false;
                                 console.log("Player 1 ran out of arrows, bow removed.");
                             }
-                            // TODO: Add arrow firing sound effect
+                            // TODO: Fire sound
                         } else {
-                            // Optional: Play out of ammo sound
                             console.log("Player 1 out of arrows!");
                         }
-                    } else {
-                        // Default action: Kick
-                        this.player1.startKick(); 
-                    }
+                    } 
+                    // No 'else' needed here
                 }
 
                 // Player 2 Movement Input (Unaffected by bow)
@@ -902,45 +926,45 @@ export class GameManager {
                 }
                 // Player 2 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.KICK)) {
+                    // ACTION 1: Always Kick
+                    this.player2.startKick();
+                
+                    // ACTION 2: Swing Sword if equipped
                     if (this.player2.isSword) {
-                        this.player2.startSwordSwing(); // Swing sword if equipped
-                    } else if (this.player2.hasRocketLauncher && !this.player2.isItching) {
+                        this.player2.startSwordSwing();
+                    }
+                
+                    // ACTION 3: Fire Rocket if equipped (and not itching)
+                    if (this.player2.hasRocketLauncher && !this.player2.isItching) {
                         const newRocket = this.player2.fireRocket(this.particleSystem);
                         if (newRocket) this.activeRockets.push(newRocket);
-                    } else if (this.player2.hasBow && !this.player2.isItching) {
-                        if (this.player2.arrowAmmo > 0) { // Check ammo
-                            // FIRE ARROW
-                             // Determine effective angle based on world aim and facing direction
-                            // Negate aimAngle again here for correct firing direction
-                            const worldAimAngle = -this.player2.aimAngle;
+                    }
+                
+                    // ACTION 4: Fire Bow if equipped (and not itching)
+                    if (this.player2.hasBow && !this.player2.isItching) {
+                        if (this.player2.arrowAmmo > 0) {
+                             // --- Fire Arrow Logic ---
+                            const worldAimAngle = -this.player2.aimAngle; // Negate sway angle
                             const effectiveFireAngle = this.player2.facingDirection === 1
                                 ? worldAimAngle
-                                : Math.PI - worldAimAngle; // Mirror angle if facing left
-                            // Calculate vx and vy based on the effective angle
+                                : Math.PI - worldAimAngle;
                             const vx = Math.cos(effectiveFireAngle) * C.ARROW_SPEED;
-                            const vy = -Math.sin(effectiveFireAngle) * C.ARROW_SPEED;
-                            
-                             // SIMPLIFIED SPAWN: Approx shoulder height
+                            const vy = -Math.sin(effectiveFireAngle) * C.ARROW_SPEED; // Y flipped
                             const startX = this.player2.x;
                             const startY = this.player2.y - this.player2.legLength - this.player2.torsoLength * 0.5;
-
                             const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem);
                             this.activeArrows.push(newArrow);
-                            this.player2.arrowAmmo--; // Decrement ammo
-                            // Check if out of ammo
+                            this.player2.arrowAmmo--;
                             if (this.player2.arrowAmmo <= 0) {
                                 this.player2.hasBow = false;
                                 console.log("Player 2 ran out of arrows, bow removed.");
                             }
-                            // TODO: Add arrow firing sound effect
+                             // TODO: Fire sound
                         } else {
-                             // Optional: Play out of ammo sound
                              console.log("Player 2 out of arrows!");
                         }
-                    } else {
-                        // Default action: Kick
-                        this.player2.startKick();
                     }
+                    // No 'else' needed
                 }
 
                 // --- Debug Keys ---
