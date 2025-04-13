@@ -35,7 +35,6 @@ export class AudioManager {
   constructor() {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      console.log('AudioContext created successfully.');
     } catch (e) {
       console.error('Web Audio API is not supported in this browser.', e);
       // Provide a fallback or disable audio features
@@ -55,15 +54,12 @@ export class AudioManager {
     }
 
     if (this.loadingPromise) {
-      console.log('Sounds already loading...');
       return this.loadingPromise;
     }
     if (this.soundsLoaded) {
-      console.log('Sounds already loaded.');
       return Promise.resolve();
     }
 
-    console.log('Loading sounds...');
     const soundAssets = ASSETS.SOUNDS as SoundAssets;
     const loadPromises: Promise<void>[] = [];
 
@@ -79,7 +75,6 @@ export class AudioManager {
         await Promise.all(loadPromises);
         this.soundsLoaded = true;
         this.loadingPromise = null; // Reset loading promise
-        console.log('All sounds loaded successfully.');
         resolve();
       } catch (error) {
         console.error('Error loading one or more sounds:', error);

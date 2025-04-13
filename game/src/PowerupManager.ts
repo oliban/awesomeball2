@@ -16,7 +16,7 @@ export class PowerupManager {
     private resetSpawnTimer(): void {
         this.nextSpawnTime = Math.random() * (this.maxSpawnTime - this.minSpawnTime) + this.minSpawnTime;
         this.spawnTimer = 0; // Reset timer to 0, not the next spawn time
-        console.log(`Next powerup spawn in ${this.nextSpawnTime.toFixed(1)} seconds.`);
+        // console.log(`Next powerup spawn in ${this.nextSpawnTime.toFixed(1)} seconds.`); // REMOVE DEBUG LOG
     }
 
     private spawnPowerup(): void {
@@ -37,7 +37,7 @@ export class PowerupManager {
 
         const newPowerup = new Powerup(spawnX, spawnY, type);
         this.activePowerups.push(newPowerup);
-        console.log(`Spawning powerup: ${type} at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`);
+        // console.log(`Spawning powerup: ${type} at (${spawnX.toFixed(0)}, ${spawnY.toFixed(0)})`); // REMOVE DEBUG LOG
 
         this.resetSpawnTimer();
     }
@@ -84,7 +84,7 @@ export class PowerupManager {
                 playerRect.y < powerupRect.y + powerupRect.height &&
                 playerRect.y + playerRect.height > powerupRect.y
             ) {
-                console.log(`Player collided with powerup: ${powerup.type}`);
+                // console.log(`Player collided with powerup: ${powerup.type}`); // REMOVE DEBUG LOG
                 const collectedType = powerup.type;
                 powerup.isActive = false; // Deactivate collected powerup
                 this.activePowerups.splice(i, 1); // Remove from active list

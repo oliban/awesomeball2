@@ -221,8 +221,6 @@ export class Player {
         this.kickDuration = KICK_DURATION_SECONDS; // Ensure constant is used
     }
 
-    // --- Methods will be added below ---
-    
     /**
      * Draws the player stick figure on the canvas.
      * Assumes this.y is the feet position.
@@ -265,7 +263,7 @@ export class Player {
                 rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7
             };
 
-            // Interpolate target angles based on blend factor
+            // Interpolate target angles based on blend factor - APPLY TO DRAW VARIABLES ONLY
             drawLThighAngle = STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
             drawLShinAngle = lerp(poseA.leftShin, poseB.leftShin, blend);
             drawLArmAngle = STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
@@ -279,9 +277,12 @@ export class Player {
 
         // Apply rotation if tumbling (AFTER defining draw angles)
         if (this.isTumbling) {
+            // Rotate around the player's approximate center (e.g., hip position)
+            // ctx.translate(this.x, this.y - this.legLength); // OLD
             ctx.translate(this.x, this.y - this.legLength / 2); // Rotate around torso center approx
             ctx.rotate(this.rotationAngle);
-            ctx.translate(-this.x, -(this.y - this.legLength));
+            ctx.translate(-this.x, -(this.y - this.legLength)); // Translate back based on original hip-to-feet length?
+            // Note: Previous translate back was -(this.y - this.legLength / 2), let's try the original version again if rotation seems off.
         }
 
         // --- Define Base Joint Positions --- 
@@ -295,16 +296,16 @@ export class Player {
         const rightShoulderPos: Point = { x: neckPos.x + shoulderOffsetX, y: neckPos.y + shoulderOffsetY };
 
         // --- Calculate Limb Intermediate and Endpoints using DRAW angles --- 
-        // Arms
+        // Arms (assuming arm angles are absolute for now, and forearm follows upper arm)
         const upperArmLength = this.armLength * 0.5;
         const lowerArmLength = this.armLength * 0.5;
         // Use drawLArmAngle and drawRArmAngle
-        const leftElbowPos = calculateEndPoint(leftShoulderPos, upperArmLength, drawLArmAngle); 
+        const leftElbowPos = calculateEndPoint(leftShoulderPos, upperArmLength, drawLArmAngle);
         const leftHandPos = calculateEndPoint(leftElbowPos, lowerArmLength, drawLArmAngle); // TODO: Add relative forearm angle later
         const rightElbowPos = calculateEndPoint(rightShoulderPos, upperArmLength, drawRArmAngle);
         const rightHandPos = calculateEndPoint(rightElbowPos, lowerArmLength, drawRArmAngle); // TODO: Add relative forearm angle later
 
-        // Legs
+        // Legs (shin angle is relative to thigh angle)
         const thighLength = this.legLength * 0.5;
         const shinLength = this.legLength * 0.5;
         // Use drawLThighAngle, drawRThighAngle, drawLShinAngle, drawRShinAngle
@@ -378,46 +379,29 @@ export class Player {
              ctx.lineWidth = this.limbWidth;
         } else {
             // Optional: Draw a simple normal mouth if needed
-            // const mouthOffsetY = this.headRadius * 0.3;
-            // const mouthBaseY = headCenter.y + mouthOffsetY;
-            // const mouthWidth = this.headRadius * 0.6;
-            // ctx.strokeStyle = this.eyeColor;
-            // ctx.lineWidth = eyeRadius * 0.6;
-            // ctx.beginPath();
-            // ctx.moveTo(headCenter.x - mouthWidth / 2, mouthBaseY);
-            // ctx.lineTo(headCenter.x + mouthWidth / 2, mouthBaseY);
-            // ctx.stroke();
         }
 
-        // 4. Arms (Shoulder -> Elbow -> Hand) - Use draw angles
+        // 4. Arms (Shoulder -> Elbow -> Hand) - Use draw angles calculated earlier
         ctx.strokeStyle = this.teamAccent;
         ctx.beginPath();
         ctx.moveTo(leftShoulderPos.x, leftShoulderPos.y);
-        ctx.lineTo(leftElbowPos.x, leftElbowPos.y); // Uses variable calculated earlier
-        ctx.lineTo(leftHandPos.x, leftHandPos.y);   // Uses variable calculated earlier
+        ctx.lineTo(leftElbowPos.x, leftElbowPos.y);
+        ctx.lineTo(leftHandPos.x, leftHandPos.y);
         ctx.stroke();
 
         ctx.beginPath();
         ctx.moveTo(rightShoulderPos.x, rightShoulderPos.y);
-        ctx.lineTo(rightElbowPos.x, rightElbowPos.y); // Uses variable calculated earlier
-        ctx.lineTo(rightHandPos.x, rightHandPos.y);   // Uses variable calculated earlier
+        ctx.lineTo(rightElbowPos.x, rightElbowPos.y);
+        ctx.lineTo(rightHandPos.x, rightHandPos.y);
         ctx.stroke();
 
-        // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use draw angles
+        // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use draw angles calculated earlier
         ctx.strokeStyle = this.teamColor;
-        // Calculate endpoints using DRAW angles -- REMOVED DUPLICATE CALCULATION
-        // const thighLength = this.legLength * 0.5;
-        // const shinLength = this.legLength * 0.5;
-        // const leftKneePos = calculateEndPoint(hipPos, thighLength, drawLThighAngle);
-        // const leftFootPos = calculateEndPoint(leftKneePos, shinLength, drawLThighAngle + drawLShinAngle);
-        // const rightKneePos = calculateEndPoint(hipPos, thighLength, drawRThighAngle);
-        // const rightFootPos = calculateEndPoint(rightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
-
         // Left Leg
         ctx.beginPath();
         ctx.moveTo(hipPos.x, hipPos.y);
-        ctx.lineTo(leftKneePos.x, leftKneePos.y);   // Uses variable calculated earlier
-        ctx.lineTo(leftFootPos.x, leftFootPos.y);   // Uses variable calculated earlier
+        ctx.lineTo(leftKneePos.x, leftKneePos.y);
+        ctx.lineTo(leftFootPos.x, leftFootPos.y);
         ctx.stroke();
         // Right Leg
         ctx.beginPath();
@@ -426,7 +410,7 @@ export class Player {
         ctx.lineTo(rightFootPos.x, rightFootPos.y);
         ctx.stroke();
 
-        // 6. Shoes (Draw AFTER legs)
+        // 6. Shoes (Draw AFTER legs) - Use calculated foot positions
         ctx.fillStyle = this.teamAccent; // Use accent color for shoes
         // Function to draw a rotated rectangle (shoe)
         const drawShoe = (footPos: Point, facingDir: number) => {
@@ -683,7 +667,6 @@ export class Player {
                 this.tumbleTimer = 0;
                 this.rotationAngle = 0;
                 this.rotationVelocity = 0;
-                audioManager.stopSound('ITCHING'); // Stop itching sound if tumbling starts
                 // Reset angles to standing after tumble
                 this.leftThighAngle = STAND_ANGLE;
                 this.rightThighAngle = STAND_ANGLE;
@@ -691,49 +674,6 @@ export class Player {
                 this.rightShinAngle = 0;
                 this.leftArmAngle = STAND_ANGLE;
                 this.rightArmAngle = STAND_ANGLE;
-            }
-        } else if (this.isStunned) {
-            // Handle stun timer and logic (e.g., flickering)
-            // If stunned, ensure itching flag is off (visuals handled in draw)
-            this.isItching = false; 
-        } else {
-            // --- NORMAL ANIMATION AND STATE UPDATES --- 
-            // Apply gravity if player is not on the ground or on a crossbar
-            if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
-                this.vy += this.gravity * dt;
-            }
-
-            // Update VERTICAL position ALWAYS
-            this.y += this.vy * dt;
-
-            // Update HORIZONTAL position ALWAYS (using existing velocity)
-            this.x += this.vx * dt;
-
-            // Keep player within screen bounds horizontally ALWAYS (after position update)
-            if (this.x < 0) this.x = 0;
-            if (this.x > screenWidth) this.x = screenWidth; // Use passed-in screenWidth
-
-            // Handle ground collision ONLY IF NOT landed on crossbar
-            if (!landedOnCrossbar) {
-                const hitGround = this.y >= groundY;
-                if (hitGround) {
-                    const verticalVelocityBeforeGroundHit = this.vy; // Use velocity just before setting y
-                    this.y = groundY; // Snap to ground
-                    this.vy = 0;      // Stop vertical movement
-
-                    if (wasInAir) { // Check if player just landed from a jump/fall
-                        this.lastLandingVy = verticalVelocityBeforeGroundHit; // Store landing velocity
-                        this.isJumping = false;
-                        this.hasJumpedThisPress = false; // Reset particle flag on land
-                        this.justLanded = true; // Set landing flag
-                        // Play landing sound if falling fast enough
-                        if (verticalVelocityBeforeGroundHit > 200) {
-                            audioManager.playSound('LAND_2');
-                        }
-                    }
-                } else { // Player is in the air
-                    this.justLanded = false; // Ensure flag is false if not on ground
-                }
             }
         }
 
@@ -768,6 +708,9 @@ export class Player {
             }
         }
         // Update other timers later
+
+        // TODO: Handle stun timer
+        // TODO: Update powerup timers
     }
 
     /**

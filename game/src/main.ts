@@ -19,11 +19,11 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    console.log("Canvas and context initialized.");
+    // console.log("Canvas and context initialized.");
 
-    console.log("Initiating sound loading...");
+    // console.log("Initiating sound loading...");
     audioManager.loadSounds().then(() => {
-        console.log("Sound loading process completed (or already done).");
+        // console.log("Sound loading process completed (or already done).");
     }).catch(error => {
         console.error("Sound loading failed:", error);
     });
