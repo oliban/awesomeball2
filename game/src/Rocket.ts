@@ -56,7 +56,7 @@ export class Rocket {
         }
         // ------------------------
 
-        console.log(`DEBUG: Rocket Update - Pos=(${this.x.toFixed(0)},${this.y.toFixed(0)})`); // Log position
+        // console.log(`DEBUG: Rocket Update - Pos=(${this.x.toFixed(0)},${this.y.toFixed(0)})`); // Log position
 
         // --- Collision Checks ---
         let exploded = false;
@@ -100,7 +100,7 @@ export class Rocket {
 
     draw(ctx: CanvasRenderingContext2D): void {
         if (!this.isActive) return;
-        console.log(`DEBUG: Drawing Rocket at (${this.x.toFixed(0)},${this.y.toFixed(0)})`); // Log draw call
+        // console.log(`DEBUG: Drawing Rocket at (${this.x.toFixed(0)},${this.y.toFixed(0)})`); // Log draw call
 
         ctx.save();
         ctx.translate(this.x, this.y);

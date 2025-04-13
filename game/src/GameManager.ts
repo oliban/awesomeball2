@@ -9,10 +9,14 @@ import { ParticleSystem } from './ParticleSystem';
 import { Powerup } from './Powerup';
 import { audioManager } from './AudioManager';
 import { Rocket } from './Rocket';
+import { Arrow } from './Arrow';
+import { ArrowState } from './Arrow';
 
 // Add match point limit to constants if not already there
 const MATCH_POINT_LIMIT = 5; // Example limit
 const GOAL_RESET_DELAY = 1.5; // Seconds delay after goal
+const BOW_SWAY_SPEED = 0.5; // Example speed for bow sway
+const BOW_SWAY_ANGLE_MAX = 0.2; // Example max angle for bow sway
 
 export class GameManager {
     private ctx: CanvasRenderingContext2D;
@@ -33,6 +37,7 @@ export class GameManager {
     private matchOverTimer: number = 0; // Timer for match over display
     private powerupManager: PowerupManager;
     private activeRockets: Rocket[] = []; // Array to hold active rockets
+    private activeArrows: Arrow[] = []; // Array to hold active arrows
 
     // Helper to spawn a specific powerup type at a location
     // Moved BEFORE constructor to fix runtime error
@@ -482,6 +487,72 @@ export class GameManager {
                 // Don't splice here, let the main rocket update loop handle removal
             }
         }
+
+        // --- Arrow Collision Logic --- 
+        for (let i = this.activeArrows.length - 1; i >= 0; i--) {
+            const arrow = this.activeArrows[i];
+            if (!arrow.isActive || arrow.state === ArrowState.STUCK) continue; // Initial check is fine
+
+            let stuckThisIteration = false; // Flag to track if arrow stuck
+
+            // Check arrow tip collision with players
+            for (const player of players) {
+                if (arrow.owner === player) continue; // Don't collide with self
+
+                const head = player.getHeadCircle();
+                const body = player.getBodyRect();
+                const tip = arrow.getTipPosition();
+                let hitDetected = false;
+
+                // Check tip vs Head (Point vs Circle)
+                const dxHead = tip.x - head.x;
+                const dyHead = tip.y - head.y;
+                if ((dxHead * dxHead + dyHead * dyHead) < (head.radius * head.radius)) {
+                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} head`);
+                    hitDetected = true;
+                }
+                // Check tip vs Body (Point vs Rect)
+                else if (tip.x >= body.x && tip.x <= body.x + body.width &&
+                         tip.y >= body.y && tip.y <= body.y + body.height) {
+                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} body`);
+                    hitDetected = true;
+                }
+
+                if (hitDetected) {
+                    arrow.stick(player, tip.x, tip.y); // Stick arrow to the player
+                    // Apply damage/effect to player
+                    player.startItching(); // Fix 1: Removed duration argument
+                    // Add some pushback force (less than explosion)
+                    const angle = Math.atan2(tip.y - player.y, tip.x - player.x); // Angle from player center to hit point
+                    player.vx += Math.cos(angle) * C.ARROW_DAMAGE_FORCE;
+                    player.vy += Math.sin(angle) * C.ARROW_DAMAGE_FORCE * 0.5 - 100; // Add some upward knock
+                    // TODO: Play arrow hit sound
+                    audioManager.playSound('BODY_HIT_1'); // Temporary sound
+                    stuckThisIteration = true; // Set flag
+                    break; // Arrow stuck, process next arrow
+                }
+            }
+            
+            // Only check ball if arrow didn't stick to a player
+            if (!stuckThisIteration) {
+                // Check arrow tip collision with Ball (Point vs Circle)
+                const tip = arrow.getTipPosition(); // Recalculate tip if needed
+                const dxBall = tip.x - this.ball.x;
+                const dyBall = tip.y - this.ball.y;
+                if ((dxBall * dxBall + dyBall * dyBall) < (this.ball.radius * this.ball.radius)) {
+                    console.log("Arrow hit Ball");
+                    arrow.stick(this.ball, tip.x, tip.y); // Stick arrow to the ball
+                    // Apply force to ball
+                    this.ball.applyForce(arrow.vx * 0.1, arrow.vy * 0.1); // Apply a fraction of arrow velocity
+                    // TODO: Play ball hit sound
+                    // No continue needed here as it's the last check for this arrow
+                }
+            }
+            
+            // TODO: Add Arrow vs Environment (Walls, Goals) if needed
+            // Ground collision is handled within Arrow.update()
+        }
+        // --------------------------------------------
     }
 
     // Helper function for simple rectangle collision
@@ -569,6 +640,24 @@ export class GameManager {
                     // TODO: Add sound effect for pickup
                     break;
                 }
+            case PowerupType.BOW:
+                // If player already has a rocket launcher, remove it
+                if (player.hasRocketLauncher) {
+                    player.hasRocketLauncher = false;
+                    player.rocketAmmo = 0;
+                }
+                // Check if player already has bow
+                const hadBowAlready = player.hasBow;
+                player.hasBow = true;
+                if (hadBowAlready) {
+                    player.arrowAmmo += 3; // Add ammo if already had bow
+                } else {
+                    player.arrowAmmo = 3; // Set initial ammo
+                }
+                player.aimAngle = 0; // Reset aim angle on pickup
+                console.log(`Player ${player === this.player1 ? 1 : 2} ${hadBowAlready ? 'added arrows to' : 'picked up'} Bow (Ammo: ${player.arrowAmmo})`);
+                // TODO: Add sound effect for bow pickup
+                break;
             // Add other cases later
             default:
                 console.warn(`Unhandled powerup type: ${type}`);
@@ -576,7 +665,6 @@ export class GameManager {
     }
 
     private update(dt: number): void {
-        // Update Input Handler state first
         this.inputHandler.update(); 
 
         switch (this.currentState) {
@@ -591,10 +679,32 @@ export class GameManager {
                 }
                 break;
             case C.GameState.PLAYING:
-                // Handle Input
-                // Player 1
+                
+                // --- Handle Auto-Aim Sway (Moved Before Input) --- 
+                const currentTime = performance.now() / 1000; // Get time in seconds
+                const swayPhase = currentTime * BOW_SWAY_SPEED * Math.PI * 2;
+                const swayAngle = Math.sin(swayPhase) * BOW_SWAY_ANGLE_MAX;
+
+                // Apply sway to Player 1 if they have a bow and are relatively idle
+                if (this.player1.hasBow && !this.player1.isKicking && !this.player1.isStunned && !this.player1.isTumbling) {
+                    // Angle is relative to horizontal, adjust based on facing direction?
+                    // For now, just sway between +45 and -45 deg from horizontal.
+                    this.player1.aimAngle = swayAngle;
+                } else if (!this.player1.hasBow) {
+                     this.player1.aimAngle = 0; // Reset angle if bow is lost
+                }
+                // Apply sway to Player 2
+                if (this.player2.hasBow && !this.player2.isKicking && !this.player2.isStunned && !this.player2.isTumbling) {
+                    this.player2.aimAngle = swayAngle;
+                } else if (!this.player2.hasBow) {
+                     this.player2.aimAngle = 0; // Reset angle if bow is lost
+                }
+                // --- End Auto-Aim Sway ---
+
+                // --- Handle Player Input --- 
+                // Player 1 Movement Input (Unaffected by bow)
                 let p1EffectiveSpeed = this.player1.playerSpeed * this.player1.speedMultiplier;
-                if (!this.player1.isBeingPushedBack) { // Check pushback state
+                if (!this.player1.isBeingPushedBack) {
                     if (this.inputHandler.isKeyPressed(C.Player1Controls.LEFT)) {
                         this.player1.vx = -p1EffectiveSpeed;
                         this.player1.facingDirection = -1;
@@ -605,26 +715,48 @@ export class GameManager {
                         this.player1.vx = 0;
                     }
                 }
+                // Player 1 Jump Input (Unaffected by bow)
                 if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.JUMP)) {
-                    this.player1.jump(); // Always jump on JUMP press
+                    this.player1.jump();
                 }
+                // Player 1 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.KICK)) {
-                    // If player has launcher, try to fire, otherwise do a normal kick
-                    if (this.player1.hasRocketLauncher) {
-                        const newRocket = this.player1.fireRocket(this.particleSystem); // Attempt to fire
-                        if (newRocket) {
-                            this.activeRockets.push(newRocket); // Add if successful
+                    // Always kick visually
+                    this.player1.startKick(); 
+                    
+                    // Additional effects based on equipment
+                    if (this.player1.hasRocketLauncher && !this.player1.isItching) {
+                        const newRocket = this.player1.fireRocket(this.particleSystem);
+                        if (newRocket) this.activeRockets.push(newRocket);
+                    } else if (this.player1.hasBow && !this.player1.isItching) {
+                        if (this.player1.arrowAmmo > 0) { // Check ammo
+                            // FIRE ARROW
+                            console.log(`P1 FIRE BOW! Angle: ${this.player1.aimAngle.toFixed(2)} Ammo Left: ${this.player1.arrowAmmo - 1}`);
+                            const arrowSpeed = C.ARROW_SPEED;
+                            const vx = Math.cos(this.player1.aimAngle) * arrowSpeed * this.player1.facingDirection; // Re-added facingDirection
+                            const vy = -Math.sin(this.player1.aimAngle) * arrowSpeed; // Vertical uses -sin for inverted Y
+                            
+                            // Get precise start position from Player method
+                            const bowCenter = this.player1.getBowCenterPosition();
+                            // We might want a slight offset from the exact center along the aim angle
+                            const arrowSpawnOffset = 20; // How far in front of the bow center to spawn
+                            const startX = bowCenter.x + Math.cos(this.player1.aimAngle) * arrowSpawnOffset;
+                            const startY = bowCenter.y - Math.sin(this.player1.aimAngle) * arrowSpawnOffset; // Use -sin for inverted Y
+                            
+                            const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem); // Corrected constructor call (6 args)
+                            this.activeArrows.push(newArrow);
+                            this.player1.arrowAmmo--; // Decrement ammo
+                            // TODO: Add arrow firing sound effect
+                        } else {
+                            // Optional: Play out of ammo sound
+                            console.log("Player 1 out of arrows!");
                         }
-                        // NOTE: We don't fall back to kick if firing fails (e.g., no ammo)
-                        // The kick button is now dedicated to firing when launcher is equipped.
-                    } else {
-                        this.player1.startKick(); // Normal kick
                     }
                 }
 
-                // Player 2
+                // Player 2 Movement Input (Unaffected by bow)
                 let p2EffectiveSpeed = this.player2.playerSpeed * this.player2.speedMultiplier;
-                if (!this.player2.isBeingPushedBack) { // Check pushback state
+                if (!this.player2.isBeingPushedBack) {
                     if (this.inputHandler.isKeyPressed(C.Player2Controls.LEFT)) {
                         this.player2.vx = -p2EffectiveSpeed;
                         this.player2.facingDirection = -1;
@@ -635,39 +767,72 @@ export class GameManager {
                         this.player2.vx = 0;
                     }
                 }
+                // Player 2 Jump Input (Unaffected by bow)
                 if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.JUMP)) {
-                    this.player2.jump(); // Always jump on JUMP press
+                    this.player2.jump();
                 }
+                // Player 2 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.KICK)) {
-                    // If player has launcher, try to fire, otherwise do a normal kick
-                    if (this.player2.hasRocketLauncher) {
-                        const newRocket = this.player2.fireRocket(this.particleSystem); // Attempt to fire
-                        if (newRocket) {
-                            this.activeRockets.push(newRocket); // Add if successful
+                    // Always kick visually
+                    this.player2.startKick();
+
+                     // Additional effects based on equipment
+                    if (this.player2.hasRocketLauncher && !this.player2.isItching) {
+                        const newRocket = this.player2.fireRocket(this.particleSystem);
+                        if (newRocket) this.activeRockets.push(newRocket);
+                    } else if (this.player2.hasBow && !this.player2.isItching) {
+                        if (this.player2.arrowAmmo > 0) { // Check ammo
+                            // FIRE ARROW
+                            console.log(`P2 FIRE BOW! Angle: ${this.player2.aimAngle.toFixed(2)} Ammo Left: ${this.player2.arrowAmmo - 1}`);
+                            const arrowSpeed = C.ARROW_SPEED;
+                            const vx = Math.cos(this.player2.aimAngle) * arrowSpeed * this.player2.facingDirection; // Re-added facingDirection
+                            const vy = -Math.sin(this.player2.aimAngle) * arrowSpeed; // Vertical uses -sin for inverted Y
+                            
+                            // Get precise start position from Player method
+                            const bowCenter = this.player2.getBowCenterPosition();
+                            // We might want a slight offset from the exact center along the aim angle
+                            const arrowSpawnOffset = 20; // How far in front of the bow center to spawn
+                            const startX = bowCenter.x + Math.cos(this.player2.aimAngle) * arrowSpawnOffset;
+                            const startY = bowCenter.y - Math.sin(this.player2.aimAngle) * arrowSpawnOffset; // Use -sin for inverted Y
+
+                            const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem); // Corrected constructor call (6 args)
+                            this.activeArrows.push(newArrow);
+                            this.player2.arrowAmmo--; // Decrement ammo
+                            // TODO: Add arrow firing sound effect
+                        } else {
+                             // Optional: Play out of ammo sound
+                             console.log("Player 2 out of arrows!");
                         }
-                        // NOTE: Kick button is now dedicated to firing when launcher is equipped.
-                    } else {
-                        this.player2.startKick(); // Normal kick
                     }
                 }
-                
+
+                // --- Debug Keys ---
                 // DEBUG: Spawn Rocket Launcher on '1' key press
                 if (this.inputHandler.wasKeyJustPressed('1')) {
                     this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
                 }
-
                 // DEBUG: Toggle Player 1 Itching on '2' key press
                 if (this.inputHandler.wasKeyJustPressed('2')) {
                     this.player1.isItching = !this.player1.isItching;
                     console.log(`DEBUG: Toggled Player 1 itching: ${this.player1.isItching}`);
                 }
+                // DEBUG: Spawn Bow Powerup on '3' key press
+                if (this.inputHandler.wasKeyJustPressed('3')) {
+                    // this.player1.hasBow = !this.player1.hasBow; // Old toggle logic
+                    // this.player1.hasRocketLauncher = false; 
+                    // console.log(`DEBUG: Toggled Player 1 Bow: ${this.player1.hasBow}`);
+                    this.spawnSpecificPowerup(PowerupType.BOW, C.SCREEN_WIDTH / 2, 50);
+                    console.log("DEBUG: Spawned Bow Powerup");
+                }
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)
                 if (this.player1.isJumping && !this.player1.hasJumpedThisPress) {
+                    // console.log("GameManager: Emitting jump particles for P1"); // DEBUG LOG
                     this.particleSystem.emit('jump', this.player1.x, this.player1.y, 6, { scale: this.player1.sizeMultiplier });
                     this.player1.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
                 }
                 if (this.player2.isJumping && !this.player2.hasJumpedThisPress) {
+                     // console.log("GameManager: Emitting jump particles for P2"); // DEBUG LOG
                      this.particleSystem.emit('jump', this.player2.x, this.player2.y, 6, { scale: this.player2.sizeMultiplier });
                      this.player2.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
                 }
@@ -675,12 +840,14 @@ export class GameManager {
                 // Update Entities
                 this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                 if (this.player1.justLanded) {
+                    // console.log(`GameManager: Emitting landing dust for P1 (Vy: ${this.player1.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player1.x, this.player1.y, 12, 
                         { scale: this.player1.sizeMultiplier, landingVelocity: this.player1.lastLandingVy });
                     this.player1.justLanded = false; // Reset flag immediately after use
                 }
                 this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                  if (this.player2.justLanded) {
+                     // console.log(`GameManager: Emitting landing dust for P2 (Vy: ${this.player2.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player2.x, this.player2.y, 12, 
                         { scale: this.player2.sizeMultiplier, landingVelocity: this.player2.lastLandingVy });
                     this.player2.justLanded = false; // Reset flag immediately after use
@@ -692,23 +859,32 @@ export class GameManager {
                 // Update Powerups
                 this.powerupManager.update(dt);
 
-                // --- Update Active Rockets ---
+                // Update Active Rockets
                 for (let i = this.activeRockets.length - 1; i >= 0; i--) {
                     const rocket = this.activeRockets[i];
-                    rocket.update(dt); // Update rocket physics
-                    if (!rocket.isActive) {
-                        this.activeRockets.splice(i, 1); // Remove inactive rockets
+                    const exploded = rocket.update(dt); // Update returns true if it exploded
+                    if (exploded) {
+                        this.createExplosion(rocket.lastPos.x, rocket.lastPos.y); // Fix: Removed 3rd argument
+                        this.activeRockets.splice(i, 1); // Remove exploded rocket
+                    } else if (!rocket.isActive) {
+                        this.activeRockets.splice(i, 1); // Remove inactive rockets (out of bounds)
                     }
                 }
-                // -------------------------
-
-                // Update Particle System
-                this.particleSystem.update(dt); // Update particles
-
-                // Handle Collisions
+                
+                // Update Active Arrows
+                for (let i = this.activeArrows.length - 1; i >= 0; i--) {
+                    const arrow = this.activeArrows[i];
+                    const hitSomething = arrow.update(dt); // Update returns true if hit terrain/player
+                    if (hitSomething || !arrow.isActive) { // Also remove if inactive (out of bounds)
+                         // Keep stuck arrows for rendering? Or remove them?
+                         // For now, let's remove them once they hit something or go inactive
+                         // We might change this later to show stuck arrows
+                         this.activeArrows.splice(i, 1);
+                    } 
+                }
+                
+                this.particleSystem.update(dt); 
                 this.handleCollisions();
-
-                // Check for Goals 
                 this.checkGoal();
                 break;
             case C.GameState.GOAL_SCORED:
@@ -754,19 +930,42 @@ export class GameManager {
         this.player1.draw(this.ctx);
         this.player2.draw(this.ctx);
 
+        // Draw Player Weapon Status Text (REMOVED)
+        /*
+        this.ctx.fillStyle = C.WHITE;
+        this.ctx.font = '12px Arial';
+        this.ctx.textAlign = 'center';
+        // Calculate Y position reliably above the head
+        const textOffsetY = 15; // Pixels above the head
+        const p1TextY = this.player1.y - this.player1.legLength - this.player1.torsoLength - this.player1.headRadius * 2 - textOffsetY;
+        const p2TextY = this.player2.y - this.player2.legLength - this.player2.torsoLength - this.player2.headRadius * 2 - textOffsetY;
+
+        if (this.player1.hasBow) {
+            this.ctx.fillText('Bow Active', this.player1.x, p1TextY);
+        } else if (this.player1.hasRocketLauncher) {
+            this.ctx.fillText(`Rockets: ${this.player1.rocketAmmo}`, this.player1.x, p1TextY);
+        }
+        if (this.player2.hasBow) {
+            this.ctx.fillText('Bow Active', this.player2.x, p2TextY);
+        } else if (this.player2.hasRocketLauncher) {
+            this.ctx.fillText(`Rockets: ${this.player2.rocketAmmo}`, this.player2.x, p2TextY);
+        }
+        */
+
         // Draw Powerups
         this.powerupManager.draw(this.ctx);
 
-        // --- Draw Active Rockets ---
+        // Draw Rockets
         for (const rocket of this.activeRockets) {
-            if (rocket.isActive) { // Only draw active rockets
-                 rocket.draw(this.ctx);
-             }
+            rocket.draw(this.ctx);
         }
-        // -------------------------
+        
+        // Draw Arrows
+        for (const arrow of this.activeArrows) {
+            arrow.draw(this.ctx);
+        }
 
-        // Draw Particles
-        this.particleSystem.draw(this.ctx); // Draw particles
+        this.particleSystem.draw(this.ctx);
 
         // Draw UI using UIManager
         // console.log(`GameManager render: ball.isFrozen=${this.ball.isFrozen}, ball.freezeTimer=${this.ball['freezeTimer']?.toFixed(2)}`); // DEBUG LOG
@@ -780,12 +979,16 @@ export class GameManager {
             p1BigPlayerTimer: this.player1['bigPlayerTimer'],
             p1HasRocketLauncher: this.player1.hasRocketLauncher,
             p1RocketAmmo: this.player1.rocketAmmo,
+            p1HasBow: this.player1.hasBow,
+            p1ArrowAmmo: this.player1.arrowAmmo,
             // Player 2 timers/state
             p2SpeedBoostTimer: this.player2['speedBoostTimer'],
             p2SuperJumpTimer: this.player2['superJumpTimer'],
             p2BigPlayerTimer: this.player2['bigPlayerTimer'],
             p2HasRocketLauncher: this.player2.hasRocketLauncher,
             p2RocketAmmo: this.player2.rocketAmmo,
+            p2HasBow: this.player2.hasBow,
+            p2ArrowAmmo: this.player2.arrowAmmo,
             // Global state
             ballIsFrozen: this.ball.isFrozen,
             ballFreezeTimer: this.ball['freezeTimer'],

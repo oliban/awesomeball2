@@ -1,5 +1,6 @@
 import * as C from './Constants';
 import { Player } from './Player';
+import { ParticleSystem } from './ParticleSystem';
 // Import Point if it's in a separate Utils file
 // import { Point } from './Utils';
 // Basic Point type if not imported
@@ -32,22 +33,28 @@ export class Arrow {
     public stuckToObject: any = null; // Reference to object it's stuck in (e.g., player, ground, wall type string)
     public stuckOffsetX: number = 0; // Relative position where it stuck from target center
     public stuckOffsetY: number = 0;
+    private lastPos: { x: number, y: number }; // For collision detection
+    private particleSystem?: ParticleSystem; // Optional particle system for effects
 
+    private readonly length: number = 30; // Length of the arrow shaft
+    private readonly headSize: number = 6; // Size of the arrowhead
 
-    constructor(x: number, y: number, vx: number, vy: number, owner: Player) {
+    constructor(x: number, y: number, vx: number, vy: number, owner: Player, particleSystem?: ParticleSystem) {
         this.x = x;
         this.y = y;
         this.vx = vx;
         this.vy = vy;
         this.owner = owner;
         this.angle = Math.atan2(vy, vx);
-        // Adjust angle based on inverted canvas Y for atan2 result
-        this.angle = Math.atan2(-vy, vx); // Use -vy for standard math angle
-        // console.log(`Arrow created`);
+        this.lastPos = { x, y };
+        this.particleSystem = particleSystem;
+        // console.log(`Arrow created by Player ${owner.teamColor} at (${x.toFixed(0)}, ${y.toFixed(0)}) with velocity (${vx.toFixed(0)}, ${vy.toFixed(0)})`);
     }
 
-    update(dt: number): void {
-        if (!this.isActive) return;
+    update(dt: number): boolean { // Returns true if hit something this frame
+        if (!this.isActive) return false;
+
+        this.lastPos = { x: this.x, y: this.y }; // Store position BEFORE update
 
         if (this.state === ArrowState.FLYING) {
             // Apply gravity
@@ -79,6 +86,35 @@ export class Arrow {
              }
              // Otherwise, position stays fixed where it stuck
         }
+
+        // --- Collision Checks (Basic) ---
+        let hitSomething = false;
+        let hitCause: string | null = null;
+
+        // Check Ground Collision
+        if (this.y > C.GROUND_Y) {
+            this.y = C.GROUND_Y; // Stick arrow in the ground
+            this.vx = 0;         // Stop movement
+            this.vy = 0;
+            this.isActive = false; // Arrow is no longer moving/dangerous
+            hitSomething = true;
+            hitCause = "ground";
+            // TODO: Could add a slight "thud" particle effect here
+        }
+
+        // Check Screen Bounds (Despawn if goes too far off)
+        if (!hitSomething && (this.x < -this.length || this.x > C.SCREEN_WIDTH + this.length || this.y < -this.length)) {
+            this.isActive = false; 
+            // console.log("Arrow went out of bounds");
+            return false; // Didn't hit anything *in* bounds
+        }
+
+        if (hitSomething) {
+            // console.log(`Arrow hit ${hitCause} at (${this.lastPos.x.toFixed(0)}, ${this.lastPos.y.toFixed(0)})`);
+            return true; // Signal hit occurred
+        }
+
+        return false; // Still active, didn't hit anything
     }
 
     // Method to call when arrow hits something
@@ -161,5 +197,21 @@ export class Arrow {
         ctx.stroke();
 
         ctx.restore();
+    }
+
+    // Bounding box for rough collision (rotated)
+    // More accurate collision might require line segment intersection
+    getCollisionShape(): { p1: Point, p2: Point, radius: number } {
+        // Return a line segment representing the arrow shaft
+        const halfLength = this.length / 2;
+        const startX = this.x - Math.cos(this.angle) * halfLength;
+        const startY = this.y - Math.sin(this.angle) * halfLength;
+        const endX = this.x + Math.cos(this.angle) * halfLength;
+        const endY = this.y + Math.sin(this.angle) * halfLength;
+        return { 
+            p1: { x: startX, y: startY }, 
+            p2: { x: endX, y: endY },
+            radius: this.thickness / 2 // Radius for thicker collision check if needed
+        };
     }
 }

@@ -7,6 +7,7 @@ export enum PowerupType {
     SUPER_JUMP = 'SUPER_JUMP',
     BALL_FREEZE = 'BALL_FREEZE',
     ROCKET_LAUNCHER = 'ROCKET_LAUNCHER',
+    BOW = 'BOW',
     // Add more later: GOAL_SHIELD, SHRINK_OPPONENT, etc.
 }
 
@@ -198,6 +199,20 @@ export class Powerup {
                 ctx.stroke();
                 // Fins (optional)
                 ctx.fillRect(-boxW * 0.2, boxH * 0.2, boxW * 0.4, boxH * 0.1);
+                break;
+            case PowerupType.BOW:
+                ctx.fillStyle = '#8B4513'; // SaddleBrown
+                ctx.strokeStyle = C.BLACK;
+                ctx.lineWidth = 2;
+                // Draw Bow shape (arc)
+                ctx.beginPath();
+                ctx.arc(0, 0, boxW * 0.35, Math.PI * 0.6, Math.PI * 1.4); // Arc for bow limb
+                ctx.stroke();
+                // Draw Bow string
+                ctx.beginPath();
+                ctx.moveTo(0, -boxH * 0.35);
+                ctx.lineTo(0, boxH * 0.35);
+                ctx.stroke();
                 break;
             default:
                 // Fallback to purple box if type is unknown

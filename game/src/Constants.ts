@@ -152,4 +152,12 @@ export const ROCKET_TUMBLE_DURATION = 1.5; // seconds player tumbles after hit
 export const EXPLOSION_RADIUS = 80; // pixels
 export const EXPLOSION_UPWARD_FORCE = -400; // pixels/sec vertical velocity applied on hit
 
+// Bow and Arrow Constants
+export const ARROW_SPEED = 600; // pixels per second
+export const ARROW_GRAVITY = 400; // Gravity affecting arrows (lower than players)
+export const ARROW_DAMAGE_FORCE = 500; // Pushback force on hit
+export const ARROW_TUMBLE_DURATION = 1.0; // seconds player tumbles after hit by arrow
+export const BOW_SWAY_SPEED = 0.3; // Cycles per second for the auto-aim sway
+export const BOW_SWAY_ANGLE_MAX = Math.PI / 5; // Increased max angle (was PI / 10 -> approx 36 degrees)
+
 // Other constants as needed... 

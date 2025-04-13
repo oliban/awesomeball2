@@ -78,7 +78,7 @@ export class Player {
     public kickTimer: number;
     public kickDuration: number = KICK_DURATION_SECONDS; 
     public walkCycleTimer: number;
-    public facingDirection: number; // 1 for right, -1 for left
+    public facingDirection: number = 1; // 1 for right, -1 for left
     public onOtherPlayerHead: boolean = false;
     public onLeftCrossbar: boolean;
     public onRightCrossbar: boolean;
@@ -108,7 +108,7 @@ export class Player {
     // id: number;
 
     // Base Size Attributes (adjust values based on reference)
-    public readonly baseHeadRadius: number = 12;
+    public readonly baseHeadRadius: number = 10;
     public readonly baseTorsoLength: number = 36;
     public readonly baseLimbWidth: number = 10;
     public readonly baseArmLength: number = 24;
@@ -149,6 +149,17 @@ export class Player {
 
     // Itching state
     public isItching: boolean = false;
+    private itchingTimer: number = 0; // How long the itch lasts
+    private readonly itchDuration: number = 10.0; // Default itch duration (seconds)
+
+    // Bow and Arrow State
+    public isAiming: boolean = false;
+    public aimAngle: number = 0; // Angle relative to horizontal (0 = right)
+    public drawPower: number = 0; // Power buildup (0 to 1?)
+
+    // Equipment State
+    public hasBow: boolean = false;
+    public arrowAmmo: number = 0; // <<< ADDED
 
     // Physics Parameters (can be modified by powerups)
     public jumpPower: number; // Set based on BASE_JUMP_POWER
@@ -202,6 +213,12 @@ export class Player {
         this.rotationAngle = 0;
         this.rotationVelocity = 0;
 
+        // Initialize new bow state
+        this.isAiming = false;
+        this.aimAngle = 0;
+        this.drawPower = 0;
+        this.hasBow = false; // Initialize hasBow
+
         this.teamColor = teamColor;
         this.teamAccent = teamAccent;
         this.eyeColor = eyeColor;
@@ -227,6 +244,12 @@ export class Player {
      */
     public draw(ctx: CanvasRenderingContext2D) {
         ctx.save(); // Save context state
+        ctx.translate(this.x, this.y); // Move origin to player feet FIRST
+
+        // --- Calculate Key Absolute Positions ONCE --- 
+        const hipPos: Point = { x: this.x, y: this.y - this.legLength }; // Top of legs
+        const neckPos: Point = { x: hipPos.x, y: hipPos.y - this.torsoLength };
+        const headCenter: Point = { x: neckPos.x, y: neckPos.y - this.headRadius }; // Defined ONCE here
 
         // --- Define angles to use for drawing ---
         // Start with the actual physics-driven angles
@@ -240,7 +263,7 @@ export class Player {
         // --- Itching Animation Override (Visual Only) ---
         let isDrawingItching = this.isItching;
         let eyeStyle = 'normal'; // 'normal', 'frantic'
-        let mouthStyle = 'normal'; // 'normal', 'jagged'
+        let mouthStyle = 'normal'; // 'normal', 'jagged' - Defined ONCE here
 
         if (isDrawingItching) {
             const danceSpeed = 4.0; // How many full cycles per second
@@ -277,187 +300,210 @@ export class Player {
 
         // Apply rotation if tumbling (AFTER defining draw angles)
         if (this.isTumbling) {
-            // Rotate around the player's approximate center (e.g., hip position)
-            // ctx.translate(this.x, this.y - this.legLength); // OLD
-            ctx.translate(this.x, this.y - this.legLength / 2); // Rotate around torso center approx
+            // Rotate around the player's approximate center (relative to feet origin)
+            const rotationCenterY = -(this.legLength + this.torsoLength / 2); // Center Y relative to feet
+            ctx.translate(0, rotationCenterY); // Move origin UP from feet to rotation center
             ctx.rotate(this.rotationAngle);
-            ctx.translate(-this.x, -(this.y - this.legLength)); // Translate back based on original hip-to-feet length?
-            // Note: Previous translate back was -(this.y - this.legLength / 2), let's try the original version again if rotation seems off.
+            ctx.translate(0, -rotationCenterY); // Move origin back DOWN to feet
         }
 
-        // --- Define Base Joint Positions --- 
-        const hipPos: Point = { x: this.x, y: this.y - this.legLength }; // Top of legs
-        const neckPos: Point = { x: hipPos.x, y: hipPos.y - this.torsoLength };
-        const headCenter: Point = { x: neckPos.x, y: neckPos.y - this.headRadius };
-        // Shoulders slightly offset from neck
-        const shoulderOffsetY = this.headRadius * 0.2;
-        const shoulderOffsetX = this.limbWidth * 0.5; 
-        const leftShoulderPos: Point = { x: neckPos.x - shoulderOffsetX, y: neckPos.y + shoulderOffsetY };
-        const rightShoulderPos: Point = { x: neckPos.x + shoulderOffsetX, y: neckPos.y + shoulderOffsetY };
+        // --- Drawing (All coordinates are now relative to player feet at 0,0) --- 
+        // ctx.save(); // Redundant
+        // ctx.translate(this.x, this.y); // Redundant
 
-        // --- Calculate Limb Intermediate and Endpoints using DRAW angles --- 
-        // Arms (assuming arm angles are absolute for now, and forearm follows upper arm)
+        // --- Define Base Joint Positions RELATIVE to player feet --- 
+        const relHipPos: Point = { x: 0, y: -this.legLength }; 
+        const relNeckPos: Point = { x: 0, y: relHipPos.y - this.torsoLength };
+        const relHeadCenter: Point = { x: 0, y: relNeckPos.y - this.headRadius };
+        const relShoulderOffsetY = this.headRadius * 0.2;
+        const relShoulderOffsetX = this.limbWidth * 0.5; 
+        const relLeftShoulderPos: Point = { x: relNeckPos.x - relShoulderOffsetX, y: relNeckPos.y + relShoulderOffsetY };
+        const relRightShoulderPos: Point = { x: relNeckPos.x + relShoulderOffsetX, y: relNeckPos.y + relShoulderOffsetY };
+
+        // --- Calculate Limb Intermediate and Endpoints using DRAW angles (Relative to joints) --- 
         const upperArmLength = this.armLength * 0.5;
         const lowerArmLength = this.armLength * 0.5;
-        // Use drawLArmAngle and drawRArmAngle
-        const leftElbowPos = calculateEndPoint(leftShoulderPos, upperArmLength, drawLArmAngle);
-        const leftHandPos = calculateEndPoint(leftElbowPos, lowerArmLength, drawLArmAngle); // TODO: Add relative forearm angle later
-        const rightElbowPos = calculateEndPoint(rightShoulderPos, upperArmLength, drawRArmAngle);
-        const rightHandPos = calculateEndPoint(rightElbowPos, lowerArmLength, drawRArmAngle); // TODO: Add relative forearm angle later
+        const relLeftElbowPos = calculateEndPoint(relLeftShoulderPos, upperArmLength, drawLArmAngle);
+        const relLeftHandPos = calculateEndPoint(relLeftElbowPos, lowerArmLength, drawLArmAngle); 
+        const relRightElbowPos = calculateEndPoint(relRightShoulderPos, upperArmLength, drawRArmAngle);
+        const relRightHandPos = calculateEndPoint(relRightElbowPos, lowerArmLength, drawRArmAngle);
 
-        // Legs (shin angle is relative to thigh angle)
         const thighLength = this.legLength * 0.5;
         const shinLength = this.legLength * 0.5;
-        // Use drawLThighAngle, drawRThighAngle, drawLShinAngle, drawRShinAngle
-        const leftKneePos = calculateEndPoint(hipPos, thighLength, drawLThighAngle);
-        const leftFootPos = calculateEndPoint(leftKneePos, shinLength, drawLThighAngle + drawLShinAngle);
-        const rightKneePos = calculateEndPoint(hipPos, thighLength, drawRThighAngle);
-        const rightFootPos = calculateEndPoint(rightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
+        const relLeftKneePos = calculateEndPoint(relHipPos, thighLength, drawLThighAngle);
+        const relLeftFootPos = calculateEndPoint(relLeftKneePos, shinLength, drawLThighAngle + drawLShinAngle);
+        const relRightKneePos = calculateEndPoint(relHipPos, thighLength, drawRThighAngle);
+        const relRightFootPos = calculateEndPoint(relRightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
 
         // Determine player state for drawing adjustments
         const isOnSurface = (this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar);
         const isStandingStill = isOnSurface && this.vx === 0;
 
-        // --- Draw Components --- 
+        // --- Draw Components (Relative to player feet at 0,0) --- 
         ctx.lineWidth = this.limbWidth;
         ctx.lineCap = 'round';
 
-        // 1. Torso (Hip to Neck)
+        // 1. Torso (Hip to Neck) - Use relative coordinates
         ctx.strokeStyle = this.teamColor;
         ctx.beginPath();
-        ctx.moveTo(hipPos.x, hipPos.y);
-        ctx.lineTo(neckPos.x, neckPos.y);
+        ctx.moveTo(relHipPos.x, relHipPos.y); // Use relative coords
+        ctx.lineTo(relNeckPos.x, relNeckPos.y); // Use relative coords
         ctx.stroke();
 
-        // 2. Head
+        // 2. Draw Head (Circle) - Use relative coordinates
         ctx.fillStyle = this.teamColor;
         ctx.beginPath();
-        ctx.arc(headCenter.x, headCenter.y, this.headRadius, 0, Math.PI * 2);
+        ctx.arc(relHeadCenter.x, relHeadCenter.y, this.headRadius, 0, Math.PI * 2); // Use relative coords
         ctx.fill();
+        ctx.stroke(); // Outline head
         
-        // 3. Eyes
-        const eyeOffset = this.headRadius * 0.3;
-        const eyeRadius = this.headRadius * 0.15;
+        // 3. Eyes - Use relative coordinates
+        const eyeRadius = this.headRadius * 0.18;
+        const eyeOffset = this.headRadius * 0.4;
+        // Use relHeadX/Y derived from relHeadCenter
+        const relHeadX = relHeadCenter.x; // It's 0 if centered on torso
+        const relHeadY = relHeadCenter.y;
 
-        if (eyeStyle === 'frantic') {
-            // Frantic Eyes from dc1dc9e
-            ctx.fillStyle = this.eyeColor;
-            // Left Eye (maybe bigger, slightly off center)
-            ctx.beginPath();
-            ctx.arc(headCenter.x - eyeOffset * 0.9, headCenter.y + (Math.random() - 0.5) * 3, eyeRadius * 1.2, 0, Math.PI * 2);
-            ctx.fill();
-            // Right Eye (maybe smaller, slightly off center)
-            ctx.beginPath();
-            ctx.arc(headCenter.x + eyeOffset * 1.1, headCenter.y + (Math.random() - 0.5) * 3, eyeRadius * 0.8, 0, Math.PI * 2);
-            ctx.fill();
+        if (isDrawingItching) { 
+             ctx.fillStyle = this.eyeColor;
+             ctx.beginPath();
+             ctx.arc(relHeadX - eyeOffset * 0.9, relHeadY + (Math.random() - 0.5) * 3, eyeRadius * 1.2, 0, Math.PI * 2);
+             ctx.fill();
+             ctx.beginPath();
+             ctx.arc(relHeadX + eyeOffset * 1.1, relHeadY + (Math.random() - 0.5) * 3, eyeRadius * 0.8, 0, Math.PI * 2);
+             ctx.fill();
         } else {
-            // Normal Eyes
             ctx.fillStyle = this.eyeColor;
-            // Left Eye
             ctx.beginPath();
-            ctx.arc(headCenter.x - eyeOffset, headCenter.y, eyeRadius, 0, Math.PI * 2);
+            ctx.arc(relHeadX - eyeOffset, relHeadY, eyeRadius, 0, Math.PI * 2);
             ctx.fill();
-            // Right Eye
             ctx.beginPath();
-            ctx.arc(headCenter.x + eyeOffset, headCenter.y, eyeRadius, 0, Math.PI * 2);
+            ctx.arc(relHeadX + eyeOffset, relHeadY, eyeRadius, 0, Math.PI * 2);
             ctx.fill();
         }
 
-        // 3.5 Mouth
+        // 3.5 Mouth - Use relative coordinates
         if (mouthStyle === 'jagged') {
-            // Frantic Mouth (jagged line) from dc1dc9e
              ctx.strokeStyle = C.BLACK;
              ctx.lineWidth = 1;
              ctx.beginPath();
-             ctx.moveTo(headCenter.x - eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             const mouthY = relHeadY + eyeOffset * 0.8; 
+             ctx.moveTo(relHeadX - eyeOffset * 0.8, mouthY);
              for (let i = 0; i < 4; i++) {
-                 ctx.lineTo(headCenter.x - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, headCenter.y + eyeOffset * 0.8 + (Math.random() - 0.5) * 8);
+                 ctx.lineTo(relHeadX - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, mouthY + (Math.random() - 0.5) * 8);
              }
-             ctx.lineTo(headCenter.x + eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             ctx.lineTo(relHeadX + eyeOffset * 0.8, mouthY);
              ctx.stroke();
-             // Reset line width after drawing mouth
-             ctx.lineWidth = this.limbWidth;
+             ctx.lineWidth = this.limbWidth; 
         } else {
             // Optional: Draw a simple normal mouth if needed
         }
 
-        // 4. Arms (Shoulder -> Elbow -> Hand) - Use draw angles calculated earlier
+        // 4. Arms (Shoulder -> Elbow -> Hand) - Use relative coordinates
         ctx.strokeStyle = this.teamAccent;
         ctx.beginPath();
-        ctx.moveTo(leftShoulderPos.x, leftShoulderPos.y);
-        ctx.lineTo(leftElbowPos.x, leftElbowPos.y);
-        ctx.lineTo(leftHandPos.x, leftHandPos.y);
+        ctx.moveTo(relLeftShoulderPos.x, relLeftShoulderPos.y); 
+        ctx.lineTo(relLeftElbowPos.x, relLeftElbowPos.y);     
+        ctx.lineTo(relLeftHandPos.x, relLeftHandPos.y);       
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(rightShoulderPos.x, rightShoulderPos.y);
-        ctx.lineTo(rightElbowPos.x, rightElbowPos.y);
-        ctx.lineTo(rightHandPos.x, rightHandPos.y);
+        ctx.moveTo(relRightShoulderPos.x, relRightShoulderPos.y); 
+        ctx.lineTo(relRightElbowPos.x, relRightElbowPos.y);      
+        ctx.lineTo(relRightHandPos.x, relRightHandPos.y);        
         ctx.stroke();
 
-        // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use draw angles calculated earlier
+        // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use relative coordinates
         ctx.strokeStyle = this.teamColor;
-        // Left Leg
         ctx.beginPath();
-        ctx.moveTo(hipPos.x, hipPos.y);
-        ctx.lineTo(leftKneePos.x, leftKneePos.y);
-        ctx.lineTo(leftFootPos.x, leftFootPos.y);
+        ctx.moveTo(relHipPos.x, relHipPos.y);           
+        ctx.lineTo(relLeftKneePos.x, relLeftKneePos.y); 
+        ctx.lineTo(relLeftFootPos.x, relLeftFootPos.y); 
         ctx.stroke();
-        // Right Leg
         ctx.beginPath();
-        ctx.moveTo(hipPos.x, hipPos.y);
-        ctx.lineTo(rightKneePos.x, rightKneePos.y);
-        ctx.lineTo(rightFootPos.x, rightFootPos.y);
+        ctx.moveTo(relHipPos.x, relHipPos.y);            
+        ctx.lineTo(relRightKneePos.x, relRightKneePos.y); 
+        ctx.lineTo(relRightFootPos.x, relRightFootPos.y); 
         ctx.stroke();
 
-        // 6. Shoes (Draw AFTER legs) - Use calculated foot positions
-        ctx.fillStyle = this.teamAccent; // Use accent color for shoes
-        // Function to draw a rotated rectangle (shoe)
+        // 6. Shoes (Draw AFTER legs) - Use relative coordinates for translation
+        ctx.fillStyle = this.teamAccent; 
         const drawShoe = (footPos: Point, facingDir: number) => {
-            // Shoe angle is always horizontal based on facing direction
-            const finalShoeAngle = (facingDir === 1) ? 0 : Math.PI; // 0 for right, PI for left
-            
+            const finalShoeAngle = (facingDir === 1) ? 0 : Math.PI;
             ctx.save();
-            ctx.translate(footPos.x, footPos.y);
-            ctx.rotate(finalShoeAngle); // Use horizontal angle
-            // Draw rectangle centered vertically at the ankle, extending forward from the ankle point
+            // Translate relative to player feet origin (0,0)
+            ctx.translate(footPos.x, footPos.y); // Use relative footPos
+            ctx.rotate(finalShoeAngle); 
             ctx.fillRect(0, -SHOE_HEIGHT / 2, SHOE_LENGTH, SHOE_HEIGHT);
             ctx.restore();
         };
+        drawShoe(relLeftFootPos, this.facingDirection);
+        drawShoe(relRightFootPos, this.facingDirection);
 
-        // Pass only foot position and facing direction to drawShoe
-        drawShoe(leftFootPos, this.facingDirection);
-        drawShoe(rightFootPos, this.facingDirection);
-
-        // 7. Draw Rocket Launcher if equipped
+        // 7. Draw Rocket Launcher if equipped - Use relative coordinates
         if (this.hasRocketLauncher) {
             ctx.save();
-            // Position near the hip/lower torso, slightly offset
-            const launcherWidth = this.armLength * 1.1; // Slightly longer than arm
-            const launcherHeight = this.limbWidth * 0.8; // Slightly thinner than limbs
-            const verticalOffset = -this.legLength - this.torsoLength * 0.3; // Position relative to feet Y
+            const launcherWidth = this.armLength * 1.1;
+            const launcherHeight = this.limbWidth * 0.8;
+            const verticalOffset = -(this.legLength + this.torsoLength * 0.3); 
             const horizontalOffset = this.facingDirection * (this.limbWidth * 0.5);
-
-            ctx.translate(this.x + horizontalOffset, this.y + verticalOffset);
-            // Keep launcher horizontal (no rotation applied here relative to player)
-            // If player tumbles, the ctx is already rotated, so the launcher rotates with the player.
-            // The launcher itself is drawn horizontally along the translated context's x-axis.
-
-            // Adjust drawing origin based on facing direction so nozzle points outwards
+            ctx.translate(horizontalOffset, verticalOffset); // Translate relative to feet
             const drawOriginX = this.facingDirection === 1 ? 0 : -launcherWidth;
-
-            // Draw launcher body (grey)
-            ctx.fillStyle = '#808080'; // Grey
+            ctx.fillStyle = '#808080'; 
             ctx.fillRect(drawOriginX, -launcherHeight / 2, launcherWidth, launcherHeight);
             ctx.strokeStyle = C.BLACK;
             ctx.lineWidth = 1;
             ctx.strokeRect(drawOriginX, -launcherHeight / 2, launcherWidth, launcherHeight);
-
-            // Optional: Draw a small nozzle/tip
-            // Position nozzle at the correct end based on facing direction
             const nozzleX = this.facingDirection === 1 ? launcherWidth : -5;
-            ctx.fillStyle = '#505050'; // Darker grey
+            ctx.fillStyle = '#505050'; 
             ctx.fillRect(drawOriginX + nozzleX, -launcherHeight / 3, 5, launcherHeight * 0.66);
+            ctx.restore();
+        }
+
+        // 8. Draw Bow if equipped - Use relative coordinates
+        if (this.hasBow) {
+            ctx.save();
+            const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.6); 
+            const bowVerticalOffset = -(this.legLength + this.torsoLength * 0.5); 
+            ctx.translate(bowHorizontalOffset, bowVerticalOffset); // Translate relative to feet
+            ctx.rotate(this.aimAngle); 
+
+            // --- Draw Bow Shape ---
+            const bowLength = this.armLength * 1.8;
+            const bowThickness = this.limbWidth * 0.5;
+            const bowCurveDepth = bowLength * 0.15;
+            const effectiveBowCurveDepth = bowCurveDepth * this.facingDirection;
+            ctx.strokeStyle = '#8B4513';
+            ctx.lineWidth = bowThickness;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(0, -bowLength / 2);
+            ctx.quadraticCurveTo(effectiveBowCurveDepth, 0, 0, bowLength / 2);
+            ctx.stroke();
+
+            // --- Draw Bow String ---
+            // Draw slightly thicker and more opaque string for visibility
+            ctx.strokeStyle = '#E0E0E0'; // Lighter Grey string color
+            ctx.lineWidth = 1.5; 
+            ctx.lineCap = 'butt'; // Flat ends for string
+
+            ctx.beginPath();
+            ctx.moveTo(0, -bowLength / 2); // Top tip
+            ctx.lineTo(0, bowLength / 2);  // Bottom tip (straight string for now)
+            ctx.stroke();
+
+            // --- DEBUG: Draw Aiming Line ---
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(0, 0); // Start at bow center (already translated & rotated)
+            // Draw line along aiming direction, adjusted by facing direction
+            ctx.lineTo(50 * this.facingDirection, 0); // Use facing direction
+            ctx.stroke();
+            // --- End Debug Line ---
+
+            // Restore previous line width if needed (assuming default is this.limbWidth)
+            ctx.lineWidth = this.limbWidth;
 
             ctx.restore();
         }
@@ -709,6 +755,15 @@ export class Player {
         }
         // Update other timers later
 
+        // Itching Timer
+        if (this.isItching) {
+            this.itchingTimer -= dt;
+            if (this.itchingTimer <= 0) {
+                this.isItching = false;
+                console.log(`Player ${this.teamColor} stopped itching`);
+            }
+        }
+
         // TODO: Handle stun timer
         // TODO: Update powerup timers
     }
@@ -717,7 +772,7 @@ export class Player {
      * Initiates the kick action if the player is not already kicking.
      */
     public startKick() {
-        if (!this.isKicking && !this.isStunned && !this.isTumbling) { 
+        if (!this.isKicking && !this.isStunned && !this.isTumbling && !this.isItching) {
             this.isKicking = true;
             this.kickTimer = 0;
             // Reset kick impact tracking for this kick
@@ -885,6 +940,19 @@ export class Player {
         return hitboxes;
     }
 
+    /**
+     * Calculates the center position where the bow should be drawn.
+     * Used for drawing the bow and spawning arrows.
+     * NOTE: Returns position in world coordinates.
+     */
+    public getBowCenterPosition(): Point {
+        const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.4); // Offset in facing direction
+        const bowVerticalOffset = -this.legLength - this.torsoLength * 0.5; // Position near mid-torso Y relative to feet
+        const bowCenterX = this.x + bowHorizontalOffset;
+        const bowCenterY = this.y + bowVerticalOffset;
+        return { x: bowCenterX, y: bowCenterY };
+    }
+
     // --- Powerup Activation/Deactivation Methods ---
 
     public activateSpeedBoost(): void {
@@ -980,5 +1048,21 @@ export class Player {
         this.armLength = this.baseArmLength * this.sizeMultiplier;
         this.legLength = this.baseLegLength * this.sizeMultiplier;
         // Recalculate derived positions if needed, or let draw handle scaling
+    }
+
+    /**
+     * Activates the itching state for a set duration.
+     */
+    public startItching(): void {
+        if (!this.isItching) { // Don't reset if already itching
+            console.log(`Player ${this.teamColor} started itching!`);
+            this.isItching = true;
+            this.itchingTimer = this.itchDuration;
+            // Stop other actions potentially?
+            this.isKicking = false;
+            this.isTumbling = false; // Stop tumbling if hit while tumbling?
+            this.isBeingPushedBack = false; // Stop pushback?
+            // Keep movement? Maybe allow shuffling?
+        }
     }
 } 
