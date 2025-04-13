@@ -147,10 +147,8 @@ export class Player {
     public isSword: boolean = false;
     public swordAngle: number = 0;
 
-    // Itching Frenzy State
+    // Itching state
     public isItching: boolean = false;
-    private itchingTimer: number = 0;
-    private readonly ITCHING_DURATION: number = 10.0; // seconds (Match sound clip)
 
     // Physics Parameters (can be modified by powerups)
     public jumpPower: number; // Set based on BASE_JUMP_POWER
@@ -232,7 +230,54 @@ export class Player {
     public draw(ctx: CanvasRenderingContext2D) {
         ctx.save(); // Save context state
 
-        // Apply rotation if tumbling
+        // --- Define angles to use for drawing ---
+        // Start with the actual physics-driven angles
+        let drawLThighAngle = this.leftThighAngle;
+        let drawRThighAngle = this.rightThighAngle;
+        let drawLShinAngle = this.leftShinAngle;
+        let drawRShinAngle = this.rightShinAngle;
+        let drawLArmAngle = this.leftArmAngle;
+        let drawRArmAngle = this.rightArmAngle;
+
+        // --- Itching Animation Override (Visual Only) ---
+        let isDrawingItching = this.isItching;
+        let eyeStyle = 'normal'; // 'normal', 'frantic'
+        let mouthStyle = 'normal'; // 'normal', 'jagged'
+
+        if (isDrawingItching) {
+            const danceSpeed = 4.0; // How many full cycles per second
+            const time = (Date.now() / 1000) * danceSpeed; // Use current time
+            
+            // Calculate blend factor (0 -> 1 -> 0 smoothly over cycle)
+            const phase = (Math.sin(time * Math.PI) + 1) / 2; // Normalized phase (0 to 1 to 0)
+            // Apply ease-in-out cubic easing to the phase
+            const blend = phase < 0.5 
+                ? 4 * phase * phase * phase 
+                : 1 - Math.pow(-2 * phase + 2, 3) / 2;
+
+            // Define two itchy poses (angles relative to STAND_ANGLE or 0 for shin)
+            const poseA = {
+                leftThigh: Math.PI * 0.3, leftShin: Math.PI * 0.4, leftArm: Math.PI * 0.6, 
+                rightThigh: -Math.PI * 0.2, rightShin: -Math.PI * 0.1, rightArm: -Math.PI * 0.3
+            };
+            const poseB = {
+                leftThigh: -Math.PI * 0.1, leftShin: -Math.PI * 0.2, leftArm: -Math.PI * 0.4, 
+                rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7
+            };
+
+            // Interpolate target angles based on blend factor
+            drawLThighAngle = STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
+            drawLShinAngle = lerp(poseA.leftShin, poseB.leftShin, blend);
+            drawLArmAngle = STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
+            drawRThighAngle = STAND_ANGLE + lerp(poseA.rightThigh, poseB.rightThigh, blend);
+            drawRShinAngle = lerp(poseA.rightShin, poseB.rightShin, blend);
+            drawRArmAngle = STAND_ANGLE + lerp(poseA.rightArm, poseB.rightArm, blend);
+
+            eyeStyle = 'frantic';
+            mouthStyle = 'jagged';
+        }
+
+        // Apply rotation if tumbling (AFTER defining draw angles)
         if (this.isTumbling) {
             ctx.translate(this.x, this.y - this.legLength / 2); // Rotate around torso center approx
             ctx.rotate(this.rotationAngle);
@@ -249,23 +294,24 @@ export class Player {
         const leftShoulderPos: Point = { x: neckPos.x - shoulderOffsetX, y: neckPos.y + shoulderOffsetY };
         const rightShoulderPos: Point = { x: neckPos.x + shoulderOffsetX, y: neckPos.y + shoulderOffsetY };
 
-        // --- Calculate Limb Intermediate and Endpoints --- 
-        // Arms (assuming arm angles are absolute for now, and forearm follows upper arm)
+        // --- Calculate Limb Intermediate and Endpoints using DRAW angles --- 
+        // Arms
         const upperArmLength = this.armLength * 0.5;
         const lowerArmLength = this.armLength * 0.5;
-        const leftElbowPos = calculateEndPoint(leftShoulderPos, upperArmLength, this.leftArmAngle);
-        const leftHandPos = calculateEndPoint(leftElbowPos, lowerArmLength, this.leftArmAngle); // TODO: Add relative forearm angle later
-        const rightElbowPos = calculateEndPoint(rightShoulderPos, upperArmLength, this.rightArmAngle);
-        const rightHandPos = calculateEndPoint(rightElbowPos, lowerArmLength, this.rightArmAngle); // TODO: Add relative forearm angle later
+        // Use drawLArmAngle and drawRArmAngle
+        const leftElbowPos = calculateEndPoint(leftShoulderPos, upperArmLength, drawLArmAngle); 
+        const leftHandPos = calculateEndPoint(leftElbowPos, lowerArmLength, drawLArmAngle); // TODO: Add relative forearm angle later
+        const rightElbowPos = calculateEndPoint(rightShoulderPos, upperArmLength, drawRArmAngle);
+        const rightHandPos = calculateEndPoint(rightElbowPos, lowerArmLength, drawRArmAngle); // TODO: Add relative forearm angle later
 
-        // Legs (shin angle is relative to thigh angle)
+        // Legs
         const thighLength = this.legLength * 0.5;
         const shinLength = this.legLength * 0.5;
-        const leftKneePos = calculateEndPoint(hipPos, thighLength, this.leftThighAngle);
-        const leftFootPos = calculateEndPoint(leftKneePos, shinLength, this.leftThighAngle + this.leftShinAngle);
-        const rightKneePos = calculateEndPoint(hipPos, thighLength, this.rightThighAngle);
-        const rightFootPos = calculateEndPoint(rightKneePos, shinLength, this.rightThighAngle + this.rightShinAngle);
-        // We expect footPos.y to be roughly this.y, adjust calculation or base point if needed
+        // Use drawLThighAngle, drawRThighAngle, drawLShinAngle, drawRShinAngle
+        const leftKneePos = calculateEndPoint(hipPos, thighLength, drawLThighAngle);
+        const leftFootPos = calculateEndPoint(leftKneePos, shinLength, drawLThighAngle + drawLShinAngle);
+        const rightKneePos = calculateEndPoint(hipPos, thighLength, drawRThighAngle);
+        const rightFootPos = calculateEndPoint(rightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
 
         // Determine player state for drawing adjustments
         const isOnSurface = (this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar);
@@ -292,8 +338,8 @@ export class Player {
         const eyeOffset = this.headRadius * 0.3;
         const eyeRadius = this.headRadius * 0.15;
 
-        if (this.isItching) {
-            // Frantic Eyes
+        if (eyeStyle === 'frantic') {
+            // Frantic Eyes from dc1dc9e
             ctx.fillStyle = this.eyeColor;
             // Left Eye (maybe bigger, slightly off center)
             ctx.beginPath();
@@ -303,18 +349,6 @@ export class Player {
             ctx.beginPath();
             ctx.arc(headCenter.x + eyeOffset * 1.1, headCenter.y + (Math.random() - 0.5) * 3, eyeRadius * 0.8, 0, Math.PI * 2);
             ctx.fill();
-
-             // Frantic Mouth (jagged line)
-             ctx.strokeStyle = C.BLACK;
-             ctx.lineWidth = 1;
-             ctx.beginPath();
-             ctx.moveTo(headCenter.x - eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
-             for (let i = 0; i < 4; i++) {
-                 ctx.lineTo(headCenter.x - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, headCenter.y + eyeOffset * 0.8 + (Math.random() - 0.5) * 8);
-             }
-             ctx.lineTo(headCenter.x + eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
-             ctx.stroke();
-
         } else {
             // Normal Eyes
             ctx.fillStyle = this.eyeColor;
@@ -328,30 +362,62 @@ export class Player {
             ctx.fill();
         }
 
-        // Set default line width for limbs BEFORE drawing arms/legs
-        ctx.lineWidth = this.limbWidth;
+        // 3.5 Mouth
+        if (mouthStyle === 'jagged') {
+            // Frantic Mouth (jagged line) from dc1dc9e
+             ctx.strokeStyle = C.BLACK;
+             ctx.lineWidth = 1;
+             ctx.beginPath();
+             ctx.moveTo(headCenter.x - eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             for (let i = 0; i < 4; i++) {
+                 ctx.lineTo(headCenter.x - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, headCenter.y + eyeOffset * 0.8 + (Math.random() - 0.5) * 8);
+             }
+             ctx.lineTo(headCenter.x + eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             ctx.stroke();
+             // Reset line width after drawing mouth
+             ctx.lineWidth = this.limbWidth;
+        } else {
+            // Optional: Draw a simple normal mouth if needed
+            // const mouthOffsetY = this.headRadius * 0.3;
+            // const mouthBaseY = headCenter.y + mouthOffsetY;
+            // const mouthWidth = this.headRadius * 0.6;
+            // ctx.strokeStyle = this.eyeColor;
+            // ctx.lineWidth = eyeRadius * 0.6;
+            // ctx.beginPath();
+            // ctx.moveTo(headCenter.x - mouthWidth / 2, mouthBaseY);
+            // ctx.lineTo(headCenter.x + mouthWidth / 2, mouthBaseY);
+            // ctx.stroke();
+        }
 
-        // 4. Arms (Shoulder -> Elbow -> Hand)
+        // 4. Arms (Shoulder -> Elbow -> Hand) - Use draw angles
         ctx.strokeStyle = this.teamAccent;
         ctx.beginPath();
         ctx.moveTo(leftShoulderPos.x, leftShoulderPos.y);
-        ctx.lineTo(leftElbowPos.x, leftElbowPos.y);
-        ctx.lineTo(leftHandPos.x, leftHandPos.y);
+        ctx.lineTo(leftElbowPos.x, leftElbowPos.y); // Uses variable calculated earlier
+        ctx.lineTo(leftHandPos.x, leftHandPos.y);   // Uses variable calculated earlier
         ctx.stroke();
 
         ctx.beginPath();
         ctx.moveTo(rightShoulderPos.x, rightShoulderPos.y);
-        ctx.lineTo(rightElbowPos.x, rightElbowPos.y);
-        ctx.lineTo(rightHandPos.x, rightHandPos.y);
+        ctx.lineTo(rightElbowPos.x, rightElbowPos.y); // Uses variable calculated earlier
+        ctx.lineTo(rightHandPos.x, rightHandPos.y);   // Uses variable calculated earlier
         ctx.stroke();
 
-        // 5. Legs (Hip -> Knee -> Foot/Ankle)
+        // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use draw angles
         ctx.strokeStyle = this.teamColor;
+        // Calculate endpoints using DRAW angles -- REMOVED DUPLICATE CALCULATION
+        // const thighLength = this.legLength * 0.5;
+        // const shinLength = this.legLength * 0.5;
+        // const leftKneePos = calculateEndPoint(hipPos, thighLength, drawLThighAngle);
+        // const leftFootPos = calculateEndPoint(leftKneePos, shinLength, drawLThighAngle + drawLShinAngle);
+        // const rightKneePos = calculateEndPoint(hipPos, thighLength, drawRThighAngle);
+        // const rightFootPos = calculateEndPoint(rightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
+
         // Left Leg
         ctx.beginPath();
         ctx.moveTo(hipPos.x, hipPos.y);
-        ctx.lineTo(leftKneePos.x, leftKneePos.y);
-        ctx.lineTo(leftFootPos.x, leftFootPos.y);
+        ctx.lineTo(leftKneePos.x, leftKneePos.y);   // Uses variable calculated earlier
+        ctx.lineTo(leftFootPos.x, leftFootPos.y);   // Uses variable calculated earlier
         ctx.stroke();
         // Right Leg
         ctx.beginPath();
@@ -628,54 +694,8 @@ export class Player {
             }
         } else if (this.isStunned) {
             // Handle stun timer and logic (e.g., flickering)
-            // Make sure itching doesn't interfere
-            if (this.isItching) audioManager.stopSound('ITCHING'); // Stop sound if stunned during frenzy
-            this.isItching = false;
-        } else if (this.isItching) {
-            // ITCHING FRENZY ANIMATION
-            this.itchingTimer -= dt;
-            if (this.itchingTimer <= 0) {
-                this.isItching = false;
-                audioManager.stopSound('ITCHING'); // Stop sound when timer runs out
-                console.log("Itching Frenzy Ended!");
-            } else {
-                // --- New Itching Dance Animation --- 
-                const danceSpeed = 4.0; // How many full cycles per second
-                const time = (this.ITCHING_DURATION - this.itchingTimer) * danceSpeed;
-                // const phase = (time % 1.0); // Progress through the current cycle (0 to 1)
-                
-                // Define two itchy poses (angles relative to STAND_ANGLE or 0 for shin)
-                const poseA = {
-                    leftThigh: Math.PI * 0.3, leftShin: Math.PI * 0.4, leftArm: Math.PI * 0.6, 
-                    rightThigh: -Math.PI * 0.2, rightShin: -Math.PI * 0.1, rightArm: -Math.PI * 0.3
-                };
-                const poseB = {
-                    leftThigh: -Math.PI * 0.1, leftShin: -Math.PI * 0.2, leftArm: -Math.PI * 0.4, 
-                    rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7
-                };
-                
-                // Alternate between poses using a sine wave for smooth transition
-                const blend = (Math.sin(time * Math.PI * 2) + 1) / 2; // 0 -> 1 -> 0 smoothly
-
-                // Interpolate target angles based on blend factor
-                const targetLThigh = STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
-                const targetLShin = lerp(poseA.leftShin, poseB.leftShin, blend);
-                const targetLArm = STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
-                const targetRThigh = STAND_ANGLE + lerp(poseA.rightThigh, poseB.rightThigh, blend);
-                const targetRShin = lerp(poseA.rightShin, poseB.rightShin, blend);
-                const targetRArm = STAND_ANGLE + lerp(poseA.rightArm, poseB.rightArm, blend);
-
-                // Move current angles towards target angles (gives a slightly laggy/floppy feel)
-                const moveSpeed = dt * 15.0; // Speed of interpolation towards target
-                this.leftThighAngle += (targetLThigh - this.leftThighAngle) * moveSpeed;
-                this.leftShinAngle += (targetLShin - this.leftShinAngle) * moveSpeed;
-                this.leftArmAngle += (targetLArm - this.leftArmAngle) * moveSpeed;
-                this.rightThighAngle += (targetRThigh - this.rightThighAngle) * moveSpeed;
-                this.rightShinAngle += (targetRShin - this.rightShinAngle) * moveSpeed;
-                this.rightArmAngle += (targetRArm - this.rightArmAngle) * moveSpeed;
-                // -------------------------------------
-            }
-            // SKIP NORMAL ANIMATION UPDATES BELOW
+            // If stunned, ensure itching flag is off (visuals handled in draw)
+            this.isItching = false; 
         } else {
             // --- NORMAL ANIMATION AND STATE UPDATES --- 
             // Apply gravity if player is not on the ground or on a crossbar
@@ -1017,14 +1037,5 @@ export class Player {
         this.armLength = this.baseArmLength * this.sizeMultiplier;
         this.legLength = this.baseLegLength * this.sizeMultiplier;
         // Recalculate derived positions if needed, or let draw handle scaling
-    }
-
-    public startItchingFrenzy(): void {
-        if (!this.isItching && !this.isStunned && !this.isTumbling) { // Don't trigger if already itching/stunned/tumbling
-            this.isItching = true;
-            this.itchingTimer = this.ITCHING_DURATION;
-            console.log("Player started itching frenzy!");
-            audioManager.playSound('ITCHING', 1, true); // Play sound (volume 1, loop true)
-        }
     }
 } 

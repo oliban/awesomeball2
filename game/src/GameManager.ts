@@ -653,24 +653,21 @@ export class GameManager {
                 
                 // DEBUG: Spawn Rocket Launcher on '1' key press
                 if (this.inputHandler.wasKeyJustPressed('1')) {
-                    // console.log("DEBUG: '1' key JUST pressed while PLAYING."); 
                     this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
                 }
-                // DEBUG: Trigger Itching Frenzy on '2' key press
-                if (this.inputHandler.wasKeyJustPressed('2')) { 
-                    console.log("DEBUG: '2' key pressed - Triggering Itching Frenzy!");
-                    this.player1.startItchingFrenzy();
-                    this.player2.startItchingFrenzy();
+
+                // DEBUG: Toggle Player 1 Itching on '2' key press
+                if (this.inputHandler.wasKeyJustPressed('2')) {
+                    this.player1.isItching = !this.player1.isItching;
+                    console.log(`DEBUG: Toggled Player 1 itching: ${this.player1.isItching}`);
                 }
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)
                 if (this.player1.isJumping && !this.player1.hasJumpedThisPress) {
-                    // console.log("GameManager: Emitting jump particles for P1"); // DEBUG LOG
                     this.particleSystem.emit('jump', this.player1.x, this.player1.y, 6, { scale: this.player1.sizeMultiplier });
                     this.player1.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
                 }
                 if (this.player2.isJumping && !this.player2.hasJumpedThisPress) {
-                     // console.log("GameManager: Emitting jump particles for P2"); // DEBUG LOG
                      this.particleSystem.emit('jump', this.player2.x, this.player2.y, 6, { scale: this.player2.sizeMultiplier });
                      this.player2.hasJumpedThisPress = true; // Ensure particle only emits once per jump press
                 }
@@ -678,14 +675,12 @@ export class GameManager {
                 // Update Entities
                 this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                 if (this.player1.justLanded) {
-                    // console.log(`GameManager: Emitting landing dust for P1 (Vy: ${this.player1.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player1.x, this.player1.y, 12, 
                         { scale: this.player1.sizeMultiplier, landingVelocity: this.player1.lastLandingVy });
                     this.player1.justLanded = false; // Reset flag immediately after use
                 }
                 this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                  if (this.player2.justLanded) {
-                     // console.log(`GameManager: Emitting landing dust for P2 (Vy: ${this.player2.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player2.x, this.player2.y, 12, 
                         { scale: this.player2.sizeMultiplier, landingVelocity: this.player2.lastLandingVy });
                     this.player2.justLanded = false; // Reset flag immediately after use
