@@ -29,6 +29,9 @@ export class Ball {
     }
 
     update(dt: number): void {
+        // Log velocity at the START of the update, AFTER collisions/forces may have been applied
+        console.log(`[Ball] Update START: vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`);
+        
         // Bail out early if frozen
         // console.log(`Ball update check: isFrozen=${this.isFrozen}, freezeTimer=${this.freezeTimer?.toFixed(2)}`); // DEBUG LOG
         if (this.isFrozen) {
@@ -235,8 +238,10 @@ export class Ball {
 
     applyForce(forceX: number, forceY: number): void {
         // Add force to existing velocity
+        console.log(`Ball applyForce: BEFORE vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)} | Applying force (${forceX.toFixed(1)}, ${forceY.toFixed(1)})`);
         this.vx += forceX;
         this.vy += forceY;
+        console.log(`Ball applyForce: AFTER vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`);
         // TODO: Consider mass/delta time if implementing more realistic physics
     }
 

@@ -1088,8 +1088,7 @@ export class Player {
         const dy = targetY - this.y; 
         // Ensure this calculates WORLD angle directly (0=right, PI/2=up, -PI/2=down)
         // Always use -dy because Y is inverted in canvas vs math angle.
-        // Negate the angle to fix the inverted aim issue
-        this.aimAngle = -Math.atan2(-dy, dx);
+        this.aimAngle = Math.atan2(-dy, dx);
         // console.log(`DEBUG updateAim P${this.facingDirection === 1 ? 1 : 2}: aimAngle=${this.aimAngle.toFixed(2)}`); // Optional log
     }
 } 

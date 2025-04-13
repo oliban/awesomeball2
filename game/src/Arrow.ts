@@ -34,7 +34,7 @@ export class Arrow {
     public stuckOffsetX: number = 0; // Relative position where it stuck from target center
     public stuckOffsetY: number = 0;
     private lastPos: { x: number, y: number }; // For collision detection
-    private particleSystem?: ParticleSystem; // Optional particle system for effects
+    public particleSystem?: ParticleSystem; // Optional particle system for effects
 
     private readonly length: number = 30; // Length of the arrow shaft
     private readonly headSize: number = 6; // Size of the arrowhead
@@ -51,7 +51,7 @@ export class Arrow {
         // console.log(`Arrow created by Player ${owner.teamColor} at (${x.toFixed(0)}, ${y.toFixed(0)}) with velocity (${vx.toFixed(0)}, ${vy.toFixed(0)})`);
     }
 
-    update(dt: number): boolean { // Returns true if hit something this frame
+    update(dt: number): boolean { // Returns true if hit something this frame - RETURN VALUE NO LONGER USED
         if (!this.isActive) return false;
 
         this.lastPos = { x: this.x, y: this.y }; // Store position BEFORE update
@@ -67,54 +67,34 @@ export class Arrow {
             // Update angle based on velocity vector
             this.angle = Math.atan2(this.vy, this.vx);
 
-            // Simple out-of-bounds check (deactivate)
-            // Add check for hitting ground
-            if (this.y >= C.GROUND_Y - (this.thickness / 2)) {
-                 this.stick('ground', this.x, C.GROUND_Y - (this.thickness / 2));
-            }
-            // Deactivate if way off screen
-            else if (this.x < -this.width * 2 || this.x > C.SCREEN_WIDTH + this.width * 2 || this.y > C.SCREEN_HEIGHT + 100) {
+            // Simple out-of-bounds check (deactivate) - Keep this
+            if (this.x < -this.width * 2 || this.x > C.SCREEN_WIDTH + this.width * 2 || this.y > C.SCREEN_HEIGHT + 100 || this.y < -this.width * 2 ) {
+                 console.log("Arrow went way out of bounds, deactivating.");
                  this.isActive = false;
             }
+            // REMOVED Ground Check from here - will be handled in GameManager.handleCollisions
+            // if (this.y >= C.GROUND_Y - (this.thickness / 2)) { ... }
+
         } else if (this.state === ArrowState.STUCK) {
              // If stuck to a moving object (like a player), update position based on target
              if (this.stuckToObject && typeof this.stuckToObject === 'object' && 'x' in this.stuckToObject && 'y' in this.stuckToObject) {
                  // Simple attachment - doesn't account for target rotation or player scaling
                  this.x = this.stuckToObject.x + this.stuckOffsetX;
                  this.y = this.stuckToObject.y + this.stuckOffsetY;
-                 // TODO: Make stuck angle match player angle?
+                 // Update angle to match target's angle if it's a player? (more complex)
+                 if (this.stuckToObject instanceof Player) {
+                    // Match player's effective draw angle if stuck?
+                    // This might look weird if arrow sticks perpendicular to player facing
+                    // Let's keep the impact angle for now.
+                 }
              }
              // Otherwise, position stays fixed where it stuck
         }
 
-        // --- Collision Checks (Basic) ---
-        let hitSomething = false;
-        let hitCause: string | null = null;
+        // REMOVED Collision Checks from here
+        // They are now centralized in GameManager.handleCollisions
 
-        // Check Ground Collision
-        if (this.y > C.GROUND_Y) {
-            this.y = C.GROUND_Y; // Stick arrow in the ground
-            this.vx = 0;         // Stop movement
-            this.vy = 0;
-            this.isActive = false; // Arrow is no longer moving/dangerous
-            hitSomething = true;
-            hitCause = "ground";
-            // TODO: Could add a slight "thud" particle effect here
-        }
-
-        // Check Screen Bounds (Despawn if goes too far off)
-        if (!hitSomething && (this.x < -this.length || this.x > C.SCREEN_WIDTH + this.length || this.y < -this.length)) {
-            this.isActive = false; 
-            // console.log("Arrow went out of bounds");
-            return false; // Didn't hit anything *in* bounds
-        }
-
-        if (hitSomething) {
-            // console.log(`Arrow hit ${hitCause} at (${this.lastPos.x.toFixed(0)}, ${this.lastPos.y.toFixed(0)})`);
-            return true; // Signal hit occurred
-        }
-
-        return false; // Still active, didn't hit anything
+        return false; // Return value is not used anymore
     }
 
     // Method to call when arrow hits something
@@ -232,5 +212,10 @@ export class Arrow {
             p2: { x: endX, y: endY },
             radius: this.thickness / 2 // Radius for thicker collision check if needed
         };
+    }
+
+    // Public getter for the last position
+    public getLastPosition(): { x: number, y: number } {
+        return this.lastPos;
     }
 }

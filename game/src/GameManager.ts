@@ -489,9 +489,11 @@ export class GameManager {
         // --- Arrow Collision Logic --- 
         for (let i = this.activeArrows.length - 1; i >= 0; i--) {
             const arrow = this.activeArrows[i];
-            if (!arrow.isActive || arrow.state === ArrowState.STUCK) continue; // Initial check is fine
+            // Skip arrows that are already stuck or inactive from previous frames
+            if (!arrow.isActive || arrow.state === ArrowState.STUCK) continue; 
 
-            let stuckThisIteration = false; // Flag to track if arrow stuck
+            let stuckThisIteration = false; 
+            const tip = arrow.getTipPosition(); // Use tip position again
 
             // Check arrow tip collision with players
             for (const player of players) {
@@ -499,56 +501,73 @@ export class GameManager {
 
                 const head = player.getHeadCircle();
                 const body = player.getBodyRect();
-                const tip = arrow.getTipPosition();
                 let hitDetected = false;
 
                 // Check tip vs Head (Point vs Circle)
                 const dxHead = tip.x - head.x;
                 const dyHead = tip.y - head.y;
                 if ((dxHead * dxHead + dyHead * dyHead) < (head.radius * head.radius)) {
-                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} head`);
+                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} head (Tip Check)`);
                     hitDetected = true;
                 }
                 // Check tip vs Body (Point vs Rect)
                 else if (tip.x >= body.x && tip.x <= body.x + body.width &&
                          tip.y >= body.y && tip.y <= body.y + body.height) {
-                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} body`);
+                    console.log(`Arrow hit Player ${player === this.player1 ? 1 : 2} body (Tip Check)`);
                     hitDetected = true;
                 }
 
                 if (hitDetected) {
-                    arrow.stick(player, tip.x, tip.y); // Stick arrow to the player
+                    // Stick arrow based on tip position
+                    arrow.stick(player, tip.x, tip.y); 
                     // Apply damage/effect to player
-                    player.startItching(); // Fix 1: Removed duration argument
-                    // Add some pushback force (less than explosion)
-                    const angle = Math.atan2(tip.y - player.y, tip.x - player.x); // Angle from player center to hit point
+                    player.startItching(); 
+                    const angle = Math.atan2(tip.y - player.y, tip.x - player.x); 
                     player.vx += Math.cos(angle) * C.ARROW_DAMAGE_FORCE;
-                    player.vy += Math.sin(angle) * C.ARROW_DAMAGE_FORCE * 0.5 - 100; // Add some upward knock
-                    // TODO: Play arrow hit sound
-                    audioManager.playSound('BODY_HIT_1'); // Temporary sound
-                    stuckThisIteration = true; // Set flag
-                    break; // Arrow stuck, process next arrow
+                    player.vy += Math.sin(angle) * C.ARROW_DAMAGE_FORCE * 0.5 - 100; 
+                    audioManager.playSound('BODY_HIT_1'); 
+                    stuckThisIteration = true; 
+                    break; 
                 }
             }
             
             // Only check ball if arrow didn't stick to a player
             if (!stuckThisIteration) {
                 // Check arrow tip collision with Ball (Point vs Circle)
-                const tip = arrow.getTipPosition(); // Recalculate tip if needed
                 const dxBall = tip.x - this.ball.x;
                 const dyBall = tip.y - this.ball.y;
                 if ((dxBall * dxBall + dyBall * dyBall) < (this.ball.radius * this.ball.radius)) {
-                    console.log("Arrow hit Ball");
-                    arrow.stick(this.ball, tip.x, tip.y); // Stick arrow to the ball
-                    // Apply force to ball
-                    this.ball.applyForce(arrow.vx * 0.1, arrow.vy * 0.1); // Apply a fraction of arrow velocity
-                    // TODO: Play ball hit sound
-                    // No continue needed here as it's the last check for this arrow
+                    // Store velocity IMMEDIATELY upon detecting hit
+                    const impactVx = arrow.vx; 
+                    const impactVy = arrow.vy;
+                    console.log(`[GM] Arrow hit Ball. Stored Velocity: (${impactVx.toFixed(1)}, ${impactVy.toFixed(1)}) (Tip Check)`); 
+                    
+                    const forceMultiplier = 1.0; 
+                    const forceX = impactVx * forceMultiplier;
+                    const forceY = impactVy * forceMultiplier;
+                    console.log(`[GM] Calculated Force to Apply: (${forceX.toFixed(1)}, ${forceY.toFixed(1)})`);
+
+                    // Apply force using the stored impact velocity
+                    console.log(`[GM] Calling ball.applyForce...`);
+                    this.ball.applyForce(forceX, forceY); // Use stored velocity
+                    console.log(`[GM] Returned from ball.applyForce.`);
+                    audioManager.playSound('BODY_HIT_1');
+                    
+                    // Now stick the arrow (use tip position for sticking point)
+                    console.log(`[GM] Calling arrow.stick...`);
+                    arrow.stick(this.ball, tip.x, tip.y); 
+                    console.log(`[GM] Returned from arrow.stick.`);
+                    
+                    stuckThisIteration = true; // Set flag
                 }
             }
             
-            // TODO: Add Arrow vs Environment (Walls, Goals) if needed
-            // Ground collision is handled within Arrow.update()
+            // Check Arrow vs Ground (End Pos Check - Keep this simplified check)
+            if (!stuckThisIteration && arrow.y >= C.GROUND_Y - (arrow['thickness'] / 2)) {
+                console.log("Arrow hit Ground (End Pos Check)");
+                arrow.stick('ground', arrow.x, C.GROUND_Y - (arrow['thickness'] / 2));
+                stuckThisIteration = true; 
+            }
         }
         // --------------------------------------------
     }
@@ -731,8 +750,8 @@ export class GameManager {
                             // FIRE ARROW
                             const arrowSpeed = C.ARROW_SPEED;
                             // Determine effective angle based on world aim and facing direction
-                            // Negate the aimAngle again to counteract the negation in updateAim and swayAngle
-                            const worldAimAngle = -this.player1.aimAngle; // Negate to correct inverted aim
+                            // Negate aimAngle again here for correct firing direction
+                            const worldAimAngle = -this.player1.aimAngle; 
                             const effectiveFireAngle = this.player1.facingDirection === 1 
                                 ? worldAimAngle 
                                 : Math.PI - worldAimAngle; // Mirror angle if facing left
@@ -790,8 +809,8 @@ export class GameManager {
                         if (this.player2.arrowAmmo > 0) { // Check ammo
                             // FIRE ARROW
                              // Determine effective angle based on world aim and facing direction
-                            // Negate the aimAngle again to counteract the negation in updateAim and swayAngle
-                            const worldAimAngle = -this.player2.aimAngle; // Negate to correct inverted aim
+                            // Negate aimAngle again here for correct firing direction
+                            const worldAimAngle = -this.player2.aimAngle;
                             const effectiveFireAngle = this.player2.facingDirection === 1
                                 ? worldAimAngle
                                 : Math.PI - worldAimAngle; // Mirror angle if facing left
@@ -853,51 +872,54 @@ export class GameManager {
                 // Update Entities
                 this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                 if (this.player1.justLanded) {
-                    // console.log(`GameManager: Emitting landing dust for P1 (Vy: ${this.player1.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player1.x, this.player1.y, 12, 
                         { scale: this.player1.sizeMultiplier, landingVelocity: this.player1.lastLandingVy });
                     this.player1.justLanded = false; // Reset flag immediately after use
                 }
                 this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
                  if (this.player2.justLanded) {
-                     // console.log(`GameManager: Emitting landing dust for P2 (Vy: ${this.player2.lastLandingVy.toFixed(1)})`); // DEBUG LOG
                     this.particleSystem.emit('landingDust', this.player2.x, this.player2.y, 12, 
                         { scale: this.player2.sizeMultiplier, landingVelocity: this.player2.lastLandingVy });
                     this.player2.justLanded = false; // Reset flag immediately after use
                 }
 
-                // Update Ball (call unconditionally, internal logic handles freeze)
-                this.ball.update(dt);
-
                 // Update Powerups
                 this.powerupManager.update(dt);
 
-                // Update Active Rockets
+                // Update Active Rockets (Check isActive after update)
                 for (let i = this.activeRockets.length - 1; i >= 0; i--) {
                     const rocket = this.activeRockets[i];
-                    const exploded = rocket.update(dt); // Update returns true if it exploded
-                    if (exploded) {
-                        this.createExplosion(rocket.lastPos.x, rocket.lastPos.y); // Fix: Removed 3rd argument
-                        this.activeRockets.splice(i, 1); // Remove exploded rocket
-                    } else if (!rocket.isActive) {
-                        this.activeRockets.splice(i, 1); // Remove inactive rockets (out of bounds)
+                    rocket.update(dt); // Update rocket physics/state
+                    // If rocket exploded/went OOB, its update should set isActive = false
+                    if (!rocket.isActive) {
+                        // If it was an explosion, createExplosion should have been called already
+                        this.activeRockets.splice(i, 1); 
                     }
                 }
                 
-                // Update Active Arrows
+                // Update Active Arrows (Physics Only)
                 for (let i = this.activeArrows.length - 1; i >= 0; i--) {
                     const arrow = this.activeArrows[i];
-                    const hitSomething = arrow.update(dt); // Update returns true if hit terrain/player
-                    if (hitSomething || !arrow.isActive) { // Also remove if inactive (out of bounds)
-                         // Keep stuck arrows for rendering? Or remove them?
-                         // For now, let's remove them once they hit something or go inactive
-                         // We might change this later to show stuck arrows
-                         this.activeArrows.splice(i, 1);
-                    } 
+                    arrow.update(dt); // Update arrow physics (gravity, position)
+                    // Check ONLY for inactivity (out of bounds)
+                    if (!arrow.isActive) {
+                        console.log("Removing inactive arrow (OOB) from GameManager list.");
+                        this.activeArrows.splice(i, 1);
+                    }
+                    // DO NOT remove based on hitSomething or arrow.state here
+                    // Sticking/Force application is handled in handleCollisions
                 }
                 
+                // *** Handle Collisions BEFORE updating the ball ***
+                this.handleCollisions(); // Handles player-player, player-ball, arrow hits, etc. Applies forces.
+
+                // Update Ball (NOW uses velocity possibly modified by handleCollisions)
+                this.ball.update(dt);
+                
+                // Update Particles AFTER entities and ball have moved
                 this.particleSystem.update(dt); 
-                this.handleCollisions();
+                
+                // Check Goal AFTER ball position is updated
                 this.checkGoal();
                 break;
             case C.GameState.GOAL_SCORED:
@@ -1197,4 +1219,4 @@ export class GameManager {
 
         // TODO: Refine visual/audio effects if needed
     }
-} 
+}
