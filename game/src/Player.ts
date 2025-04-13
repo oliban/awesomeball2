@@ -147,6 +147,11 @@ export class Player {
     public isSword: boolean = false;
     public swordAngle: number = 0;
 
+    // Itching Frenzy State
+    public isItching: boolean = false;
+    private itchingTimer: number = 0;
+    private readonly ITCHING_DURATION: number = 10.0; // seconds (Match sound clip)
+
     // Physics Parameters (can be modified by powerups)
     public jumpPower: number; // Set based on BASE_JUMP_POWER
     public playerSpeed: number; // Set based on BASE_PLAYER_SPEED
@@ -229,8 +234,7 @@ export class Player {
 
         // Apply rotation if tumbling
         if (this.isTumbling) {
-            // Rotate around the player's approximate center (e.g., hip position)
-            ctx.translate(this.x, this.y - this.legLength);
+            ctx.translate(this.x, this.y - this.legLength / 2); // Rotate around torso center approx
             ctx.rotate(this.rotationAngle);
             ctx.translate(-this.x, -(this.y - this.legLength));
         }
@@ -285,19 +289,47 @@ export class Player {
         ctx.fill();
         
         // 3. Eyes
+        const eyeOffset = this.headRadius * 0.3;
         const eyeRadius = this.headRadius * 0.15;
-        const eyeOffsetX = this.headRadius * 0.4 * this.facingDirection; // Offset based on direction
-        const eyeOffsetY = -this.headRadius * 0.2;
-        const leftEyePos: Point = { x: headCenter.x + eyeOffsetX - eyeRadius * 1.5 * this.facingDirection, y: headCenter.y + eyeOffsetY };
-        const rightEyePos: Point = { x: headCenter.x + eyeOffsetX + eyeRadius * 1.5 * this.facingDirection, y: headCenter.y + eyeOffsetY };
 
-        ctx.fillStyle = this.eyeColor;
-        ctx.beginPath();
-        ctx.arc(leftEyePos.x, leftEyePos.y, eyeRadius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(rightEyePos.x, rightEyePos.y, eyeRadius, 0, Math.PI * 2);
-        ctx.fill();
+        if (this.isItching) {
+            // Frantic Eyes
+            ctx.fillStyle = this.eyeColor;
+            // Left Eye (maybe bigger, slightly off center)
+            ctx.beginPath();
+            ctx.arc(headCenter.x - eyeOffset * 0.9, headCenter.y + (Math.random() - 0.5) * 3, eyeRadius * 1.2, 0, Math.PI * 2);
+            ctx.fill();
+            // Right Eye (maybe smaller, slightly off center)
+            ctx.beginPath();
+            ctx.arc(headCenter.x + eyeOffset * 1.1, headCenter.y + (Math.random() - 0.5) * 3, eyeRadius * 0.8, 0, Math.PI * 2);
+            ctx.fill();
+
+             // Frantic Mouth (jagged line)
+             ctx.strokeStyle = C.BLACK;
+             ctx.lineWidth = 1;
+             ctx.beginPath();
+             ctx.moveTo(headCenter.x - eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             for (let i = 0; i < 4; i++) {
+                 ctx.lineTo(headCenter.x - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, headCenter.y + eyeOffset * 0.8 + (Math.random() - 0.5) * 8);
+             }
+             ctx.lineTo(headCenter.x + eyeOffset * 0.8, headCenter.y + eyeOffset * 0.8);
+             ctx.stroke();
+
+        } else {
+            // Normal Eyes
+            ctx.fillStyle = this.eyeColor;
+            // Left Eye
+            ctx.beginPath();
+            ctx.arc(headCenter.x - eyeOffset, headCenter.y, eyeRadius, 0, Math.PI * 2);
+            ctx.fill();
+            // Right Eye
+            ctx.beginPath();
+            ctx.arc(headCenter.x + eyeOffset, headCenter.y, eyeRadius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Set default line width for limbs BEFORE drawing arms/legs
+        ctx.lineWidth = this.limbWidth;
 
         // 4. Arms (Shoulder -> Elbow -> Hand)
         ctx.strokeStyle = this.teamAccent;
@@ -585,6 +617,7 @@ export class Player {
                 this.tumbleTimer = 0;
                 this.rotationAngle = 0;
                 this.rotationVelocity = 0;
+                audioManager.stopSound('ITCHING'); // Stop itching sound if tumbling starts
                 // Reset angles to standing after tumble
                 this.leftThighAngle = STAND_ANGLE;
                 this.rightThighAngle = STAND_ANGLE;
@@ -592,6 +625,95 @@ export class Player {
                 this.rightShinAngle = 0;
                 this.leftArmAngle = STAND_ANGLE;
                 this.rightArmAngle = STAND_ANGLE;
+            }
+        } else if (this.isStunned) {
+            // Handle stun timer and logic (e.g., flickering)
+            // Make sure itching doesn't interfere
+            if (this.isItching) audioManager.stopSound('ITCHING'); // Stop sound if stunned during frenzy
+            this.isItching = false;
+        } else if (this.isItching) {
+            // ITCHING FRENZY ANIMATION
+            this.itchingTimer -= dt;
+            if (this.itchingTimer <= 0) {
+                this.isItching = false;
+                audioManager.stopSound('ITCHING'); // Stop sound when timer runs out
+                console.log("Itching Frenzy Ended!");
+            } else {
+                // --- New Itching Dance Animation --- 
+                const danceSpeed = 4.0; // How many full cycles per second
+                const time = (this.ITCHING_DURATION - this.itchingTimer) * danceSpeed;
+                // const phase = (time % 1.0); // Progress through the current cycle (0 to 1)
+                
+                // Define two itchy poses (angles relative to STAND_ANGLE or 0 for shin)
+                const poseA = {
+                    leftThigh: Math.PI * 0.3, leftShin: Math.PI * 0.4, leftArm: Math.PI * 0.6, 
+                    rightThigh: -Math.PI * 0.2, rightShin: -Math.PI * 0.1, rightArm: -Math.PI * 0.3
+                };
+                const poseB = {
+                    leftThigh: -Math.PI * 0.1, leftShin: -Math.PI * 0.2, leftArm: -Math.PI * 0.4, 
+                    rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7
+                };
+                
+                // Alternate between poses using a sine wave for smooth transition
+                const blend = (Math.sin(time * Math.PI * 2) + 1) / 2; // 0 -> 1 -> 0 smoothly
+
+                // Interpolate target angles based on blend factor
+                const targetLThigh = STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
+                const targetLShin = lerp(poseA.leftShin, poseB.leftShin, blend);
+                const targetLArm = STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
+                const targetRThigh = STAND_ANGLE + lerp(poseA.rightThigh, poseB.rightThigh, blend);
+                const targetRShin = lerp(poseA.rightShin, poseB.rightShin, blend);
+                const targetRArm = STAND_ANGLE + lerp(poseA.rightArm, poseB.rightArm, blend);
+
+                // Move current angles towards target angles (gives a slightly laggy/floppy feel)
+                const moveSpeed = dt * 15.0; // Speed of interpolation towards target
+                this.leftThighAngle += (targetLThigh - this.leftThighAngle) * moveSpeed;
+                this.leftShinAngle += (targetLShin - this.leftShinAngle) * moveSpeed;
+                this.leftArmAngle += (targetLArm - this.leftArmAngle) * moveSpeed;
+                this.rightThighAngle += (targetRThigh - this.rightThighAngle) * moveSpeed;
+                this.rightShinAngle += (targetRShin - this.rightShinAngle) * moveSpeed;
+                this.rightArmAngle += (targetRArm - this.rightArmAngle) * moveSpeed;
+                // -------------------------------------
+            }
+            // SKIP NORMAL ANIMATION UPDATES BELOW
+        } else {
+            // --- NORMAL ANIMATION AND STATE UPDATES --- 
+            // Apply gravity if player is not on the ground or on a crossbar
+            if (this.y < groundY && !this.onLeftCrossbar && !this.onRightCrossbar) {
+                this.vy += this.gravity * dt;
+            }
+
+            // Update VERTICAL position ALWAYS
+            this.y += this.vy * dt;
+
+            // Update HORIZONTAL position ALWAYS (using existing velocity)
+            this.x += this.vx * dt;
+
+            // Keep player within screen bounds horizontally ALWAYS (after position update)
+            if (this.x < 0) this.x = 0;
+            if (this.x > screenWidth) this.x = screenWidth; // Use passed-in screenWidth
+
+            // Handle ground collision ONLY IF NOT landed on crossbar
+            if (!landedOnCrossbar) {
+                const hitGround = this.y >= groundY;
+                if (hitGround) {
+                    const verticalVelocityBeforeGroundHit = this.vy; // Use velocity just before setting y
+                    this.y = groundY; // Snap to ground
+                    this.vy = 0;      // Stop vertical movement
+
+                    if (wasInAir) { // Check if player just landed from a jump/fall
+                        this.lastLandingVy = verticalVelocityBeforeGroundHit; // Store landing velocity
+                        this.isJumping = false;
+                        this.hasJumpedThisPress = false; // Reset particle flag on land
+                        this.justLanded = true; // Set landing flag
+                        // Play landing sound if falling fast enough
+                        if (verticalVelocityBeforeGroundHit > 200) {
+                            audioManager.playSound('LAND_2');
+                        }
+                    }
+                } else { // Player is in the air
+                    this.justLanded = false; // Ensure flag is false if not on ground
+                }
             }
         }
 
@@ -626,9 +748,6 @@ export class Player {
             }
         }
         // Update other timers later
-
-        // TODO: Handle stun timer
-        // TODO: Update powerup timers
     }
 
     /**
@@ -898,5 +1017,14 @@ export class Player {
         this.armLength = this.baseArmLength * this.sizeMultiplier;
         this.legLength = this.baseLegLength * this.sizeMultiplier;
         // Recalculate derived positions if needed, or let draw handle scaling
+    }
+
+    public startItchingFrenzy(): void {
+        if (!this.isItching && !this.isStunned && !this.isTumbling) { // Don't trigger if already itching/stunned/tumbling
+            this.isItching = true;
+            this.itchingTimer = this.ITCHING_DURATION;
+            console.log("Player started itching frenzy!");
+            audioManager.playSound('ITCHING', 1, true); // Play sound (volume 1, loop true)
+        }
     }
 } 

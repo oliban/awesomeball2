@@ -652,10 +652,15 @@ export class GameManager {
                 }
                 
                 // DEBUG: Spawn Rocket Launcher on '1' key press
-                // Use wasKeyJustPressed for single-trigger action
                 if (this.inputHandler.wasKeyJustPressed('1')) {
                     // console.log("DEBUG: '1' key JUST pressed while PLAYING."); 
                     this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
+                }
+                // DEBUG: Trigger Itching Frenzy on '2' key press
+                if (this.inputHandler.wasKeyJustPressed('2')) { 
+                    console.log("DEBUG: '2' key pressed - Triggering Itching Frenzy!");
+                    this.player1.startItchingFrenzy();
+                    this.player2.startItchingFrenzy();
                 }
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)

@@ -18,6 +18,19 @@ export class AudioManager {
   private soundBuffers: SoundBuffers = {};
   private soundsLoaded: boolean = false;
   private loadingPromise: Promise<void> | null = null;
+  private activeLoops: Map<string, AudioBufferSourceNode> = new Map(); // To track looped sounds
+  private soundFiles: { [key: string]: string } = {
+    'KICK_1': 'sounds/kick1.wav',
+    'KICK_2': 'sounds/kick2.wav',
+    'KICK_3': 'sounds/kick3.wav',
+    'JUMP_1': 'sounds/jump1.wav',
+    'LAND_1': 'sounds/land1.wav',
+    'LAND_2': 'sounds/land2.wav',
+    'GOAL_1': 'sounds/goal1.wav',
+    // Missing Rocket Sounds
+    // 'ROCKET_FIRE_1': 'sounds/rocket_fire1.wav',
+    // 'ROCKET_EXPLODE_1': 'sounds/rocket_explode1.wav',
+  };
 
   constructor() {
     try {
@@ -133,6 +146,26 @@ export class AudioManager {
       source.loop = loop;
       source.start(0);
       // console.log(`Playing sound: ${key}`); // Optional: log playback
+
+      // If looping, store the source node so we can stop it later
+      if (loop) {
+        // Stop and remove any existing loop with the same key
+        if (this.activeLoops.has(key)) {
+          try {
+             this.activeLoops.get(key)?.stop();
+          } catch (e) {
+             // Ignore errors if stop is called on an already stopped node
+          }
+        }
+        this.activeLoops.set(key, source);
+        // Remove from map when the sound naturally ends (though loop=true prevents this unless stopped)
+        source.onended = () => {
+          if (this.activeLoops.get(key) === source) { // Ensure it's the same node
+              this.activeLoops.delete(key);
+          }
+        };
+      }
+
     } catch (error) {
         console.error(`Error playing sound ${key}:`, error);
     }
@@ -146,8 +179,22 @@ export class AudioManager {
   }
 
   /**
-   * Optional: Add methods for stopping sounds, managing sound queues, etc.
+   * Stops a specific looped sound if it is currently playing.
+   * @param key The key of the looped sound to stop.
    */
+  stopSound(key: string): void {
+    if (this.activeLoops.has(key)) {
+      const source = this.activeLoops.get(key);
+      try {
+        source?.stop(); // Stop playback
+        console.log(`Stopped looped sound: ${key}`);
+      } catch (e) {
+        // Ignore errors, e.g., if stop is called after it already finished or was stopped
+        // console.warn(`Could not stop sound ${key}:`, e);
+      }
+      this.activeLoops.delete(key); // Remove from active loops map
+    }
+  }
 }
 
 // Create a singleton instance

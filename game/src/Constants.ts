@@ -124,6 +124,8 @@ export const ASSETS = {
         NUM_3: '/sounds/3.mp3',
         NUM_4: '/sounds/4.mp3',
         NUM_5: '/sounds/5.mp3',
+        // Effects
+        ITCHING: '/sounds/itching.mp3',
         // Add NUM_6 to NUM_9 if needed
     }
     // Add other asset types like IMAGES later if needed
