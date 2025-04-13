@@ -471,30 +471,29 @@ export class Player {
             const effectiveDrawAngle = this.facingDirection === 1 
                                ? this.aimAngle 
                                : Math.PI - this.aimAngle; // Mirror world angle if facing left
-            // ctx.rotate(effectiveDrawAngle); // REMOVE context rotation
+            
+            ctx.rotate(effectiveDrawAngle); // Re-enable context rotation for proper bow orientation
 
-            // --- Draw Bow Shape without context rotation --- 
+            // --- Draw Bow Shape with context rotation --- 
             const bowLength = this.armLength * 2.2;
             const bowThickness = this.limbWidth * 0.6;
             const bowCurveDepth = bowLength * 0.2;
-            const stringHandleOffset = -bowThickness * 0.8; // Offset string slightly towards player (-X relative to DRAW angle)
+            const stringHandleOffset = -bowThickness * 0.8; // Offset string slightly towards player
 
-            // Calculate end points based on effectiveDrawAngle
-            const cosA = Math.cos(effectiveDrawAngle);
-            const sinA = Math.sin(effectiveDrawAngle);
+            // Since we're now using context rotation, these calculations are simpler
             const halfLen = bowLength / 2;
             
-            // String endpoints (offset back along perpendicular to effectiveDrawAngle)
-            const stringOffsetX = stringHandleOffset * (-sinA); // Perpendicular X
-            const stringOffsetY = stringHandleOffset * cosA;  // Perpendicular Y
-            const stringTopX = stringOffsetX - sinA * halfLen;
-            const stringTopY = stringOffsetY + cosA * halfLen;
-            const stringBottomX = stringOffsetX + sinA * halfLen;
-            const stringBottomY = stringOffsetY - cosA * halfLen;
+            // String endpoints (with stringHandleOffset in the -x direction)
+            const stringOffsetX = stringHandleOffset;
+            const stringOffsetY = 0;
+            const stringTopX = stringOffsetX;
+            const stringTopY = -halfLen; // Up in rotated context
+            const stringBottomX = stringOffsetX;
+            const stringBottomY = halfLen; // Down in rotated context
 
-            // Curve control point (outwards along effectiveDrawAngle)
-            const curveControlX = stringOffsetX + cosA * bowCurveDepth; // Outward X
-            const curveControlY = stringOffsetY - sinA * bowCurveDepth; // Outward Y (needs -sin for canvas Y down)
+            // Curve control point (outwards along x-axis in rotated context)
+            const curveControlX = stringOffsetX + bowCurveDepth;
+            const curveControlY = 0; // Center point of the curve
 
             // --- Draw Bow String ---            
             ctx.strokeStyle = '#E0E0E0'; 
@@ -514,13 +513,12 @@ export class Player {
             ctx.quadraticCurveTo(curveControlX, curveControlY, stringBottomX, stringBottomY); 
             ctx.stroke();
 
-            // --- Debug Aiming Line (drawn along effectiveDrawAngle) --- 
+            // --- Debug Aiming Line (drawn along x-axis in rotated context) --- 
             ctx.strokeStyle = 'red';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(0, 0); // Start at pivot
-            // Draw line 50 units along effectiveDrawAngle
-            ctx.lineTo(Math.cos(effectiveDrawAngle) * 50, -Math.sin(effectiveDrawAngle) * 50); 
+            ctx.lineTo(50, 0); // Draw line 50 units along the x-axis (aim direction)
             ctx.stroke();
             // --- End Debug Line ---
 
@@ -1090,7 +1088,8 @@ export class Player {
         const dy = targetY - this.y; 
         // Ensure this calculates WORLD angle directly (0=right, PI/2=up, -PI/2=down)
         // Always use -dy because Y is inverted in canvas vs math angle.
-        this.aimAngle = Math.atan2(-dy, dx);
+        // Negate the angle to fix the inverted aim issue
+        this.aimAngle = -Math.atan2(-dy, dx);
         // console.log(`DEBUG updateAim P${this.facingDirection === 1 ? 1 : 2}: aimAngle=${this.aimAngle.toFixed(2)}`); // Optional log
     }
 } 

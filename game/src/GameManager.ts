@@ -685,15 +685,15 @@ export class GameManager {
 
                 // Apply sway to Player 1 if they have a bow and are relatively idle
                 if (this.player1.hasBow && !this.player1.isKicking && !this.player1.isStunned && !this.player1.isTumbling) {
-                    // Angle is relative to horizontal, adjust based on facing direction?
-                    // For now, just sway between +45 and -45 deg from horizontal.
-                    this.player1.aimAngle = swayAngle;
+                    // Negate the angle to fix the inverted aim issue
+                    this.player1.aimAngle = -swayAngle;
                 } else if (!this.player1.hasBow) {
                      this.player1.aimAngle = 0; // Reset angle if bow is lost
                 }
                 // Apply sway to Player 2
                 if (this.player2.hasBow && !this.player2.isKicking && !this.player2.isStunned && !this.player2.isTumbling) {
-                    this.player2.aimAngle = swayAngle;
+                    // Negate the angle to fix the inverted aim issue
+                    this.player2.aimAngle = -swayAngle;
                 } else if (!this.player2.hasBow) {
                      this.player2.aimAngle = 0; // Reset angle if bow is lost
                 }
@@ -731,7 +731,8 @@ export class GameManager {
                             // FIRE ARROW
                             const arrowSpeed = C.ARROW_SPEED;
                             // Determine effective angle based on world aim and facing direction
-                            const worldAimAngle = this.player1.aimAngle;
+                            // Negate the aimAngle again to counteract the negation in updateAim and swayAngle
+                            const worldAimAngle = -this.player1.aimAngle; // Negate to correct inverted aim
                             const effectiveFireAngle = this.player1.facingDirection === 1 
                                 ? worldAimAngle 
                                 : Math.PI - worldAimAngle; // Mirror angle if facing left
@@ -789,7 +790,8 @@ export class GameManager {
                         if (this.player2.arrowAmmo > 0) { // Check ammo
                             // FIRE ARROW
                              // Determine effective angle based on world aim and facing direction
-                            const worldAimAngle = this.player2.aimAngle;
+                            // Negate the aimAngle again to counteract the negation in updateAim and swayAngle
+                            const worldAimAngle = -this.player2.aimAngle; // Negate to correct inverted aim
                             const effectiveFireAngle = this.player2.facingDirection === 1
                                 ? worldAimAngle
                                 : Math.PI - worldAimAngle; // Mirror angle if facing left
