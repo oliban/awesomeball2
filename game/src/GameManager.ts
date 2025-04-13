@@ -569,6 +569,76 @@ export class GameManager {
                 stuckThisIteration = true; 
             }
         }
+
+        // --- Sword Collision Logic --- 
+        for (const swinger of players) {
+            if (!swinger.isSword || !swinger.isSwingingSword) continue; // Only check if swinging sword
+            
+            let stuckThisIteration = false; // Declare flag for this loop scope
+
+            const swordShape = swinger.getSwordCollisionShape();
+            if (!swordShape) continue; 
+
+            // 1. Check Sword vs Other Player
+            const targetPlayer = (swinger === this.player1) ? this.player2 : this.player1;
+            if (!targetPlayer.isTumbling && !targetPlayer.isBeingPushedBack) { // Don't hit stunned/pushed players
+                const targetHead = targetPlayer.getHeadCircle();
+                const targetBody = targetPlayer.getBodyRect(); // Using rect for body
+
+                let hitDetected = false;
+                // Check sword line vs target head circle
+                if (this.checkLineCircleCollision(swordShape.p1, swordShape.p2, targetHead)) {
+                    console.log(`Sword hit Player ${targetPlayer === this.player1 ? 1 : 2} head!`);
+                    hitDetected = true;
+                }
+                // Check sword line vs target body rectangle (APPROXIMATION: check line vs rect center+radius)
+                // A true line-rect intersection is more complex. Let's use simpler circle approximation for body.
+                else {
+                    const bodyCenterX = targetBody.x + targetBody.width / 2;
+                    const bodyCenterY = targetBody.y + targetBody.height / 2;
+                    // Approximate body with a circle encompassing the rect
+                    const bodyRadius = Math.max(targetBody.width, targetBody.height) / 1.8; // Slightly smaller than fully encompassing
+                    const bodyCircle = { x: bodyCenterX, y: bodyCenterY, radius: bodyRadius };
+                    
+                    if (this.checkLineCircleCollision(swordShape.p1, swordShape.p2, bodyCircle)) {
+                        console.log(`Sword hit Player ${targetPlayer === this.player1 ? 1 : 2} body!`);
+                        hitDetected = true;
+                    }
+                }
+
+                if (hitDetected) {
+                    // Apply effect (e.g., pushback, maybe different effect than arrow?)
+                    const pushAngle = Math.atan2(targetPlayer.y - swinger.y, targetPlayer.x - swinger.x);
+                    targetPlayer.vx = Math.cos(pushAngle) * C.SWORD_HIT_FORCE; // Use a new constant
+                    targetPlayer.vy = Math.sin(pushAngle) * C.SWORD_HIT_FORCE - 150; // Add upward force
+                    targetPlayer.startTumble(); // Make them tumble
+                    // TODO: Play sword hit sound
+                    audioManager.playSound('SWORD_HIT_PLAYER');
+                    // Potentially stop sword swing early?
+                    // swinger.isSwingingSword = false; 
+                }
+            }
+
+            // 2. Check Sword vs Ball
+            const ballCircle = { x: this.ball.x, y: this.ball.y, radius: this.ball.radius };
+            // Log sword and ball positions just before the check
+            console.log(`[Sword Check] Sword: p1=(${swordShape.p1.x.toFixed(1)},${swordShape.p1.y.toFixed(1)}), p2=(${swordShape.p2.x.toFixed(1)},${swordShape.p2.y.toFixed(1)}) | Ball: cx=${ballCircle.x.toFixed(1)}, cy=${ballCircle.y.toFixed(1)}, r=${ballCircle.radius.toFixed(1)}`);
+            
+            if (this.checkLineCircleCollision(swordShape.p1, swordShape.p2, ballCircle)) {
+                 // console.log("Sword hit Ball! DETECTED."); // REMOVE THIS LOG
+                 
+                 const swordAngle = Math.atan2(swordShape.p2.y - swordShape.p1.y, swordShape.p2.x - swordShape.p1.x);
+                 const forceMagnitude = C.SWORD_BALL_FORCE;
+                 const forceX = Math.cos(swordAngle) * forceMagnitude;
+                 const forceY = Math.sin(swordAngle) * forceMagnitude;
+                 // console.log(`[Sword Hit Ball] Applying force: angle=${swordAngle.toFixed(2)}, mag=${forceMagnitude}`); // REMOVE THIS LOG
+                 this.ball.applyForce(forceX, forceY);
+                 audioManager.playSound('SWORD_HIT_BALL');
+                 stuckThisIteration = true; // Prevent other collisions this frame for the ball
+            }
+            
+            // Add ground check for sword? Probably not needed.
+        }
         // --------------------------------------------
     }
 
@@ -621,6 +691,39 @@ export class GameManager {
         // If the distance is less than the circle's radius, an overlap occurs
         const distanceSquared = (distanceX * distanceX) + (distanceY * distanceY);
         return distanceSquared < (circle.radius * circle.radius);
+    }
+
+    /**
+     * Checks for collision between a line segment and a circle.
+     * Used for more robust arrow collision to prevent tunneling.
+     * @param p1 - Start point of the line segment { x, y }.
+     * @param p2 - End point of the line segment { x, y }.
+     * @param circle - The circle object { x, y, radius }.
+     * @returns True if they collide, false otherwise.
+     */
+    private checkLineCircleCollision(p1: { x: number, y: number }, p2: { x: number, y: number }, circle: { x: number, y: number, radius: number }): boolean {
+        const lenSq = (p2.x - p1.x) * (p2.x - p1.x) + (p2.y - p1.y) * (p2.y - p1.y);
+        // Handle degenerate line (start == end)
+        if (lenSq === 0) {
+            const dx = circle.x - p1.x;
+            const dy = circle.y - p1.y;
+            return dx * dx + dy * dy <= circle.radius * circle.radius;
+        }
+
+        // Project circle center onto the line
+        let t = ((circle.x - p1.x) * (p2.x - p1.x) + (circle.y - p1.y) * (p2.y - p1.y)) / lenSq;
+        t = Math.max(0, Math.min(1, t)); // Clamp t to the segment [0, 1]
+
+        // Find the closest point on the line segment to the circle center
+        const closestX = p1.x + t * (p2.x - p1.x);
+        const closestY = p1.y + t * (p2.y - p1.y);
+
+        // Check distance from circle center to this closest point
+        const distX = circle.x - closestX;
+        const distY = circle.y - closestY;
+        const distSq = distX * distX + distY * distY;
+
+        return distSq <= circle.radius * circle.radius;
     }
 
     private applyPowerup(player: Player, type: PowerupType): void {
@@ -738,11 +841,9 @@ export class GameManager {
                 }
                 // Player 1 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player1Controls.KICK)) {
-                    // Always kick visually
-                    this.player1.startKick(); 
-                    
-                    // Additional effects based on equipment
-                    if (this.player1.hasRocketLauncher && !this.player1.isItching) {
+                    if (this.player1.isSword) {
+                        this.player1.startSwordSwing(); // Swing sword if equipped
+                    } else if (this.player1.hasRocketLauncher && !this.player1.isItching) {
                         const newRocket = this.player1.fireRocket(this.particleSystem);
                         if (newRocket) this.activeRockets.push(newRocket);
                     } else if (this.player1.hasBow && !this.player1.isItching) {
@@ -776,6 +877,9 @@ export class GameManager {
                             // Optional: Play out of ammo sound
                             console.log("Player 1 out of arrows!");
                         }
+                    } else {
+                        // Default action: Kick
+                        this.player1.startKick(); 
                     }
                 }
 
@@ -798,11 +902,9 @@ export class GameManager {
                 }
                 // Player 2 Kick/Fire Input
                 if (this.inputHandler.wasKeyJustPressed(C.Player2Controls.KICK)) {
-                    // Always kick visually
-                    this.player2.startKick();
-
-                     // Additional effects based on equipment
-                    if (this.player2.hasRocketLauncher && !this.player2.isItching) {
+                    if (this.player2.isSword) {
+                        this.player2.startSwordSwing(); // Swing sword if equipped
+                    } else if (this.player2.hasRocketLauncher && !this.player2.isItching) {
                         const newRocket = this.player2.fireRocket(this.particleSystem);
                         if (newRocket) this.activeRockets.push(newRocket);
                     } else if (this.player2.hasBow && !this.player2.isItching) {
@@ -835,6 +937,9 @@ export class GameManager {
                              // Optional: Play out of ammo sound
                              console.log("Player 2 out of arrows!");
                         }
+                    } else {
+                        // Default action: Kick
+                        this.player2.startKick();
                     }
                 }
 
@@ -850,11 +955,18 @@ export class GameManager {
                 }
                 // DEBUG: Spawn Bow Powerup on '3' key press
                 if (this.inputHandler.wasKeyJustPressed('3')) {
-                    // this.player1.hasBow = !this.player1.hasBow; // Old toggle logic
-                    // this.player1.hasRocketLauncher = false; 
-                    // console.log(`DEBUG: Toggled Player 1 Bow: ${this.player1.hasBow}`);
                     this.spawnSpecificPowerup(PowerupType.BOW, C.SCREEN_WIDTH / 2, 50);
                     console.log("DEBUG: Spawned Bow Powerup");
+                }
+                // DEBUG: Toggle Player 1 Sword on '4' key press
+                if (this.inputHandler.wasKeyJustPressed('4')) {
+                    this.player1.isSword = !this.player1.isSword;
+                    // Ensure other weapons are removed if sword is equipped
+                    if (this.player1.isSword) {
+                        this.player1.hasBow = false;
+                        this.player1.hasRocketLauncher = false;
+                    }
+                    console.log(`DEBUG: Toggled Player 1 Sword: ${this.player1.isSword}`);
                 }
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)

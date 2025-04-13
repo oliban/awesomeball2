@@ -12,7 +12,7 @@ export const GOAL_COLOR = '#FFFFFF';
 export const YELLOW = '#FFFF00';
 
 // Physics (Values adjusted for dt - less gravity!)
-export const GRAVITY = 1100; // Decreased gravity (was 1400)
+export const GRAVITY = 980; // Adjusted gravity (pixels/s^2)
 export const BASE_PLAYER_SPEED = 240; // Keep speed for now (pixels/sec)
 export const BASE_JUMP_POWER = -450; // Adjusted jump power for lower gravity (was -500)
 export const BASE_KICK_FORCE_X = 600; // Keep kick force X (pixels/sec)
@@ -98,6 +98,7 @@ export const ASSETS = {
         HEADBUTT_1: '/sounds/headbutt1.mp3',
         BODY_HIT_1: '/sounds/body_hit1.mp3',
         SWORD_HIT: '/sounds/sword_hit.mp3',
+        SWORD_HIT_BALL: '/sounds/sword_hit.mp3',
         CROSSBAR_HIT: '/sounds/crossbar_hit.mp3',
         BALL_BOUNCE_1: '/sounds/ball_bounce1.mp3',
         // Combos & Powerups
@@ -155,9 +156,14 @@ export const EXPLOSION_UPWARD_FORCE = -400; // pixels/sec vertical velocity appl
 // Bow and Arrow Constants
 export const ARROW_SPEED = 600; // pixels per second
 export const ARROW_GRAVITY = 400; // Gravity affecting arrows (lower than players)
-export const ARROW_DAMAGE_FORCE = 500; // Pushback force on hit
+export const ARROW_DAMAGE_FORCE = 400; // Magnitude of pushback from arrow hit
 export const ARROW_TUMBLE_DURATION = 1.0; // seconds player tumbles after hit by arrow
 export const BOW_SWAY_SPEED = 0.3; // Cycles per second for the auto-aim sway
 export const BOW_SWAY_ANGLE_MAX = Math.PI / 3; // Increased max angle again (was PI / 5 -> approx 60 degrees total)
+
+// Sword Constants
+export const SWORD_HIT_FORCE = 600; // Pushback force when sword hits a player
+export const SWORD_BALL_FORCE = 800; // Force applied to the ball when hit by sword
+export const SWORD_TUMBLE_ROTATION_SPEED = 6 * Math.PI; // Rotation speed for sword tumble (radians/sec)
 
 // Other constants as needed... 

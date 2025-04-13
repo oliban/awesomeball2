@@ -1,9 +1,9 @@
 // Based on SimpleStickMan from reference/awesome-ball/simple_player.py
 
 import * as C from './Constants';
-import { audioManager } from './AudioManager'; // Import the AudioManager
-import { Rocket } from './Rocket'; // Import Rocket class
-import { ParticleSystem } from './ParticleSystem'; // Import ParticleSystem class
+import { audioManager } from './AudioManager';
+import { Rocket } from './Rocket';
+import { ParticleSystem } from './ParticleSystem';
 
 // Basic type for representing points or vectors
 type Point = {
@@ -62,6 +62,32 @@ function lerp(start: number, end: number, t: number): number {
 // Simple easing functions
 function easeInQuad(t: number): number { return t * t; }
 function easeOutQuad(t: number): number { return t * (2 - t); }
+
+// ADD a new interface for the return type of the helper
+interface RelativeLimbPositions {
+    drawLThighAngle: number;
+    drawRThighAngle: number;
+    drawLShinAngle: number;
+    drawRShinAngle: number;
+    drawLArmAngle: number;
+    drawRArmAngle: number;
+    relHipPos: Point;
+    relNeckPos: Point;
+    relHeadCenter: Point;
+    relLeftShoulderPos: Point;
+    relRightShoulderPos: Point;
+    relLeftElbowPos: Point;
+    relLeftHandPos: Point;
+    relRightElbowPos: Point;
+    relRightHandPos: Point;
+    relLeftKneePos: Point;
+    relLeftFootPos: Point;
+    relRightKneePos: Point;
+    relRightFootPos: Point;
+    isDrawingItching: boolean;
+    eyeStyle: 'normal' | 'frantic';
+    mouthStyle: 'normal' | 'jagged';
+}
 
 export class Player {
     // Position and Velocity
@@ -146,6 +172,8 @@ export class Player {
     public isControlsReversed: boolean = false;
     public isSword: boolean = false;
     public swordAngle: number = 0;
+    public isSwingingSword: boolean = false;
+    private swordSwingTimer: number = 0;
 
     // Itching state
     public isItching: boolean = false;
@@ -178,6 +206,9 @@ export class Player {
     // Powerup States
     public hasRocketLauncher: boolean = false;
     public rocketAmmo: number = 0;
+
+    private readonly swordSwingDuration: number = 0.3; // Duration of swing (seconds)
+    private readonly swordSwingAngleMax: number = Math.PI * 0.8; // Total angle covered by swing
 
     constructor(
         x: number,
@@ -236,23 +267,14 @@ export class Player {
         this.playerSpeed = playerSpeed;
 
         this.kickDuration = KICK_DURATION_SECONDS; // Ensure constant is used
+
+        // Initialize size-dependent attributes
+        this.updateSizeAttributes();
     }
 
-    /**
-     * Draws the player stick figure on the canvas.
-     * Assumes this.y is the feet position.
-     */
-    public draw(ctx: CanvasRenderingContext2D) {
-        ctx.save(); // Save context state
-        ctx.translate(this.x, this.y); // Move origin to player feet FIRST
-
-        // --- Calculate Key Absolute Positions ONCE --- 
-        const hipPos: Point = { x: this.x, y: this.y - this.legLength }; // Top of legs
-        const neckPos: Point = { x: hipPos.x, y: hipPos.y - this.torsoLength };
-        const headCenter: Point = { x: neckPos.x, y: neckPos.y - this.headRadius }; // Defined ONCE here
-
+    // ADD the new private helper method BEFORE draw()
+    private _getRelativeLimbPositions(): RelativeLimbPositions {
         // --- Define angles to use for drawing ---
-        // Start with the actual physics-driven angles
         let drawLThighAngle = this.leftThighAngle;
         let drawRThighAngle = this.rightThighAngle;
         let drawLShinAngle = this.leftShinAngle;
@@ -262,69 +284,45 @@ export class Player {
 
         // --- Itching Animation Override (Visual Only) ---
         let isDrawingItching = this.isItching;
-        let eyeStyle = 'normal'; // 'normal', 'frantic'
-        let mouthStyle = 'normal'; // 'normal', 'jagged' - Defined ONCE here
+        let eyeStyle: 'normal' | 'frantic' = 'normal';
+        let mouthStyle: 'normal' | 'jagged' = 'normal';
 
         if (isDrawingItching) {
-            const danceSpeed = 4.0; // How many full cycles per second
-            const time = (Date.now() / 1000) * danceSpeed; // Use current time
-            
-            // Calculate blend factor (0 -> 1 -> 0 smoothly over cycle)
-            const phase = (Math.sin(time * Math.PI) + 1) / 2; // Normalized phase (0 to 1 to 0)
-            // Apply ease-in-out cubic easing to the phase
-            const blend = phase < 0.5 
-                ? 4 * phase * phase * phase 
+            const danceSpeed = 4.0;
+            const time = (Date.now() / 1000) * danceSpeed;
+            const phase = (Math.sin(time * Math.PI) + 1) / 2;
+            const blend = phase < 0.5
+                ? 4 * phase * phase * phase
                 : 1 - Math.pow(-2 * phase + 2, 3) / 2;
 
-            // Define two itchy poses (angles relative to STAND_ANGLE or 0 for shin)
-            const poseA = {
-                leftThigh: Math.PI * 0.3, leftShin: Math.PI * 0.4, leftArm: Math.PI * 0.6, 
-                rightThigh: -Math.PI * 0.2, rightShin: -Math.PI * 0.1, rightArm: -Math.PI * 0.3
-            };
-            const poseB = {
-                leftThigh: -Math.PI * 0.1, leftShin: -Math.PI * 0.2, leftArm: -Math.PI * 0.4, 
-                rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7
-            };
+            const poseA = { leftThigh: Math.PI * 0.3, leftShin: Math.PI * 0.4, leftArm: Math.PI * 0.6, rightThigh: -Math.PI * 0.2, rightShin: -Math.PI * 0.1, rightArm: -Math.PI * 0.3 };
+            const poseB = { leftThigh: -Math.PI * 0.1, leftShin: -Math.PI * 0.2, leftArm: -Math.PI * 0.4, rightThigh: Math.PI * 0.4, rightShin: Math.PI * 0.5, rightArm: Math.PI * 0.7 };
 
-            // Interpolate target angles based on blend factor - APPLY TO DRAW VARIABLES ONLY
-            drawLThighAngle = STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
+            drawLThighAngle = C.STAND_ANGLE + lerp(poseA.leftThigh, poseB.leftThigh, blend);
             drawLShinAngle = lerp(poseA.leftShin, poseB.leftShin, blend);
-            drawLArmAngle = STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
-            drawRThighAngle = STAND_ANGLE + lerp(poseA.rightThigh, poseB.rightThigh, blend);
+            drawLArmAngle = C.STAND_ANGLE + lerp(poseA.leftArm, poseB.leftArm, blend);
+            drawRThighAngle = C.STAND_ANGLE + lerp(poseA.rightThigh, poseB.rightThigh, blend);
             drawRShinAngle = lerp(poseA.rightShin, poseB.rightShin, blend);
-            drawRArmAngle = STAND_ANGLE + lerp(poseA.rightArm, poseB.rightArm, blend);
+            drawRArmAngle = C.STAND_ANGLE + lerp(poseA.rightArm, poseB.rightArm, blend);
 
             eyeStyle = 'frantic';
             mouthStyle = 'jagged';
         }
 
-        // Apply rotation if tumbling (AFTER defining draw angles)
-        if (this.isTumbling) {
-            // Rotate around the player's approximate center (relative to feet origin)
-            const rotationCenterY = -(this.legLength + this.torsoLength / 2); // Center Y relative to feet
-            ctx.translate(0, rotationCenterY); // Move origin UP from feet to rotation center
-            ctx.rotate(this.rotationAngle);
-            ctx.translate(0, -rotationCenterY); // Move origin back DOWN to feet
-        }
-
-        // --- Drawing (All coordinates are now relative to player feet at 0,0) --- 
-        // ctx.save(); // Redundant
-        // ctx.translate(this.x, this.y); // Redundant
-
-        // --- Define Base Joint Positions RELATIVE to player feet --- 
-        const relHipPos: Point = { x: 0, y: -this.legLength }; 
+        // --- Define Base Joint Positions RELATIVE to player feet ---
+        const relHipPos: Point = { x: 0, y: -this.legLength };
         const relNeckPos: Point = { x: 0, y: relHipPos.y - this.torsoLength };
         const relHeadCenter: Point = { x: 0, y: relNeckPos.y - this.headRadius };
         const relShoulderOffsetY = this.headRadius * 0.2;
-        const relShoulderOffsetX = this.limbWidth * 0.5; 
+        const relShoulderOffsetX = this.limbWidth * 0.5;
         const relLeftShoulderPos: Point = { x: relNeckPos.x - relShoulderOffsetX, y: relNeckPos.y + relShoulderOffsetY };
         const relRightShoulderPos: Point = { x: relNeckPos.x + relShoulderOffsetX, y: relNeckPos.y + relShoulderOffsetY };
 
-        // --- Calculate Limb Intermediate and Endpoints using DRAW angles (Relative to joints) --- 
+        // --- Calculate Limb Intermediate and Endpoints using DRAW angles (Relative to joints) ---
         const upperArmLength = this.armLength * 0.5;
         const lowerArmLength = this.armLength * 0.5;
         const relLeftElbowPos = calculateEndPoint(relLeftShoulderPos, upperArmLength, drawLArmAngle);
-        const relLeftHandPos = calculateEndPoint(relLeftElbowPos, lowerArmLength, drawLArmAngle); 
+        const relLeftHandPos = calculateEndPoint(relLeftElbowPos, lowerArmLength, drawLArmAngle);
         const relRightElbowPos = calculateEndPoint(relRightShoulderPos, upperArmLength, drawRArmAngle);
         const relRightHandPos = calculateEndPoint(relRightElbowPos, lowerArmLength, drawRArmAngle);
 
@@ -335,36 +333,61 @@ export class Player {
         const relRightKneePos = calculateEndPoint(relHipPos, thighLength, drawRThighAngle);
         const relRightFootPos = calculateEndPoint(relRightKneePos, shinLength, drawRThighAngle + drawRShinAngle);
 
-        // Determine player state for drawing adjustments
-        const isOnSurface = (this.y >= GROUND_Y || this.onLeftCrossbar || this.onRightCrossbar);
-        const isStandingStill = isOnSurface && this.vx === 0;
+        return {
+            drawLThighAngle, drawRThighAngle, drawLShinAngle, drawRShinAngle, drawLArmAngle, drawRArmAngle,
+            relHipPos, relNeckPos, relHeadCenter, relLeftShoulderPos, relRightShoulderPos,
+            relLeftElbowPos, relLeftHandPos, relRightElbowPos, relRightHandPos,
+            relLeftKneePos, relLeftFootPos, relRightKneePos, relRightFootPos,
+            isDrawingItching, eyeStyle, mouthStyle
+        };
+    }
 
-        // --- Draw Components (Relative to player feet at 0,0) --- 
+    /**
+     * Draws the player stick figure on the canvas.
+     * Assumes this.y is the feet position.
+     */
+    public draw(ctx: CanvasRenderingContext2D) {
+        ctx.save(); // Save context state
+        ctx.translate(this.x, this.y); // Move origin to player feet FIRST
+
+        // --- Calculate Relative Limb Positions using Helper ---
+        const limbs = this._getRelativeLimbPositions();
+
+        // Apply rotation if tumbling (AFTER calculating relative positions, before drawing)
+        if (this.isTumbling) {
+            // Rotate around the player's approximate center (relative to feet origin)
+            const rotationCenterY = -(this.legLength + this.torsoLength / 2); // Center Y relative to feet
+            ctx.translate(0, rotationCenterY); // Move origin UP from feet to rotation center
+            ctx.rotate(this.rotationAngle);
+            ctx.translate(0, -rotationCenterY); // Move origin back DOWN to feet
+        }
+
+        // --- Drawing (All coordinates are relative to player feet 0,0) ---
         ctx.lineWidth = this.limbWidth;
         ctx.lineCap = 'round';
 
         // 1. Torso (Hip to Neck) - Use relative coordinates
         ctx.strokeStyle = this.teamColor;
         ctx.beginPath();
-        ctx.moveTo(relHipPos.x, relHipPos.y); // Use relative coords
-        ctx.lineTo(relNeckPos.x, relNeckPos.y); // Use relative coords
+        ctx.moveTo(limbs.relHipPos.x, limbs.relHipPos.y); // Use helper result
+        ctx.lineTo(limbs.relNeckPos.x, limbs.relNeckPos.y); // Use helper result
         ctx.stroke();
 
         // 2. Draw Head (Circle) - Use relative coordinates
         ctx.fillStyle = this.teamColor;
         ctx.beginPath();
-        ctx.arc(relHeadCenter.x, relHeadCenter.y, this.headRadius, 0, Math.PI * 2); // Use relative coords
+        ctx.arc(limbs.relHeadCenter.x, limbs.relHeadCenter.y, this.headRadius, 0, Math.PI * 2); // Use helper result
         ctx.fill();
         ctx.stroke(); // Outline head
-        
+
         // 3. Eyes - Use relative coordinates
         const eyeRadius = this.headRadius * 0.18;
         const eyeOffset = this.headRadius * 0.4;
         // Use relHeadX/Y derived from relHeadCenter
-        const relHeadX = relHeadCenter.x; // It's 0 if centered on torso
-        const relHeadY = relHeadCenter.y;
+        const relHeadX = limbs.relHeadCenter.x; // It's 0 if centered on torso
+        const relHeadY = limbs.relHeadCenter.y;
 
-        if (isDrawingItching) { 
+        if (limbs.isDrawingItching) { // Use helper result
              ctx.fillStyle = this.eyeColor;
              ctx.beginPath();
              ctx.arc(relHeadX - eyeOffset * 0.9, relHeadY + (Math.random() - 0.5) * 3, eyeRadius * 1.2, 0, Math.PI * 2);
@@ -383,18 +406,18 @@ export class Player {
         }
 
         // 3.5 Mouth - Use relative coordinates
-        if (mouthStyle === 'jagged') {
+        if (limbs.mouthStyle === 'jagged') { // Use helper result
              ctx.strokeStyle = C.BLACK;
              ctx.lineWidth = 1;
              ctx.beginPath();
-             const mouthY = relHeadY + eyeOffset * 0.8; 
+             const mouthY = relHeadY + eyeOffset * 0.8;
              ctx.moveTo(relHeadX - eyeOffset * 0.8, mouthY);
              for (let i = 0; i < 4; i++) {
                  ctx.lineTo(relHeadX - eyeOffset * 0.8 + (eyeOffset * 1.6 * (i + Math.random())) / 4, mouthY + (Math.random() - 0.5) * 8);
              }
              ctx.lineTo(relHeadX + eyeOffset * 0.8, mouthY);
              ctx.stroke();
-             ctx.lineWidth = this.limbWidth; 
+             ctx.lineWidth = this.limbWidth;
         } else {
             // Optional: Draw a simple normal mouth if needed
         }
@@ -402,43 +425,43 @@ export class Player {
         // 4. Arms (Shoulder -> Elbow -> Hand) - Use relative coordinates
         ctx.strokeStyle = this.teamAccent;
         ctx.beginPath();
-        ctx.moveTo(relLeftShoulderPos.x, relLeftShoulderPos.y); 
-        ctx.lineTo(relLeftElbowPos.x, relLeftElbowPos.y);     
-        ctx.lineTo(relLeftHandPos.x, relLeftHandPos.y);       
+        ctx.moveTo(limbs.relLeftShoulderPos.x, limbs.relLeftShoulderPos.y); // Use helper result
+        ctx.lineTo(limbs.relLeftElbowPos.x, limbs.relLeftElbowPos.y);     // Use helper result
+        ctx.lineTo(limbs.relLeftHandPos.x, limbs.relLeftHandPos.y);       // Use helper result
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(relRightShoulderPos.x, relRightShoulderPos.y); 
-        ctx.lineTo(relRightElbowPos.x, relRightElbowPos.y);      
-        ctx.lineTo(relRightHandPos.x, relRightHandPos.y);        
+        ctx.moveTo(limbs.relRightShoulderPos.x, limbs.relRightShoulderPos.y); // Use helper result
+        ctx.lineTo(limbs.relRightElbowPos.x, limbs.relRightElbowPos.y);      // Use helper result
+        ctx.lineTo(limbs.relRightHandPos.x, limbs.relRightHandPos.y);        // Use helper result
         ctx.stroke();
 
         // 5. Legs (Hip -> Knee -> Foot/Ankle) - Use relative coordinates
         ctx.strokeStyle = this.teamColor;
         ctx.beginPath();
-        ctx.moveTo(relHipPos.x, relHipPos.y);           
-        ctx.lineTo(relLeftKneePos.x, relLeftKneePos.y); 
-        ctx.lineTo(relLeftFootPos.x, relLeftFootPos.y); 
+        ctx.moveTo(limbs.relHipPos.x, limbs.relHipPos.y);           // Use helper result
+        ctx.lineTo(limbs.relLeftKneePos.x, limbs.relLeftKneePos.y); // Use helper result
+        ctx.lineTo(limbs.relLeftFootPos.x, limbs.relLeftFootPos.y); // Use helper result
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(relHipPos.x, relHipPos.y);            
-        ctx.lineTo(relRightKneePos.x, relRightKneePos.y); 
-        ctx.lineTo(relRightFootPos.x, relRightFootPos.y); 
+        ctx.moveTo(limbs.relHipPos.x, limbs.relHipPos.y);            // Use helper result
+        ctx.lineTo(limbs.relRightKneePos.x, limbs.relRightKneePos.y); // Use helper result
+        ctx.lineTo(limbs.relRightFootPos.x, limbs.relRightFootPos.y); // Use helper result
         ctx.stroke();
 
         // 6. Shoes (Draw AFTER legs) - Use relative coordinates for translation
-        ctx.fillStyle = this.teamAccent; 
+        ctx.fillStyle = this.teamAccent;
         const drawShoe = (footPos: Point, facingDir: number) => {
             const finalShoeAngle = (facingDir === 1) ? 0 : Math.PI;
             ctx.save();
             // Translate relative to player feet origin (0,0)
             ctx.translate(footPos.x, footPos.y); // Use relative footPos
-            ctx.rotate(finalShoeAngle); 
+            ctx.rotate(finalShoeAngle);
             ctx.fillRect(0, -SHOE_HEIGHT / 2, SHOE_LENGTH, SHOE_HEIGHT);
             ctx.restore();
         };
-        drawShoe(relLeftFootPos, this.facingDirection);
-        drawShoe(relRightFootPos, this.facingDirection);
+        drawShoe(limbs.relLeftFootPos, this.facingDirection); // Use helper result
+        drawShoe(limbs.relRightFootPos, this.facingDirection); // Use helper result
 
         // 7. Draw Rocket Launcher if equipped - Use relative coordinates
         if (this.hasRocketLauncher) {
@@ -460,7 +483,7 @@ export class Player {
             ctx.restore();
         }
 
-        // 8. Draw Bow if equipped - Use relative coordinates
+        // 8. Draw Bow if equipped
         if (this.hasBow) {
             ctx.save();
             const bowHorizontalOffset = this.facingDirection * (this.armLength * 0.6); 
@@ -485,8 +508,6 @@ export class Player {
             
             // String endpoints (with stringHandleOffset in the -x direction)
             const stringOffsetX = stringHandleOffset;
-            const stringOffsetY = 0;
-            const stringTopX = stringOffsetX;
             const stringTopY = -halfLen; // Up in rotated context
             const stringBottomX = stringOffsetX;
             const stringBottomY = halfLen; // Down in rotated context
@@ -500,7 +521,7 @@ export class Player {
             ctx.lineWidth = 1.5; 
             ctx.lineCap = 'butt'; 
             ctx.beginPath();
-            ctx.moveTo(stringTopX, stringTopY); 
+            ctx.moveTo(stringOffsetX, stringTopY); // Use stringOffsetX for X
             ctx.lineTo(stringBottomX, stringBottomY);  
             ctx.stroke();
 
@@ -509,7 +530,7 @@ export class Player {
             ctx.lineWidth = bowThickness;
             ctx.lineCap = 'round'; 
             ctx.beginPath();
-            ctx.moveTo(stringTopX, stringTopY); 
+            ctx.moveTo(stringOffsetX, stringTopY); // Use stringOffsetX for X
             ctx.quadraticCurveTo(curveControlX, curveControlY, stringBottomX, stringBottomY); 
             ctx.stroke();
 
@@ -525,7 +546,41 @@ export class Player {
             ctx.restore();
         }
 
-        ctx.restore(); // Restore context state (main restore from draw method start)
+        // 9. Draw Sword (Attached to right hand)
+        if (this.isSword) {
+            ctx.save();
+            // Translate to the RELATIVE right hand position calculated by the helper
+            ctx.translate(limbs.relRightHandPos.x, limbs.relRightHandPos.y); // Use helper result
+
+            // Calculate sword angle (base depends on facing, modified by swing)
+            const baseAngle = this.facingDirection === 1 ? -Math.PI / 2.5 : Math.PI + Math.PI / 2.5; // Point more downwards
+            const currentSwordVisualAngle = baseAngle + this.swordAngle; // Use the animated swordAngle
+            ctx.rotate(currentSwordVisualAngle);
+
+            // Draw the sword relative to the hand (rotated context)
+            const swordLength = this.armLength * 1.8;
+            const hiltLength = swordLength * 0.2;
+            const bladeLength = swordLength - hiltLength;
+            const swordWidth = this.limbWidth * 0.5;
+
+            // Hilt (brown rectangle)
+            ctx.fillStyle = '#8B4513'; // Brown
+            ctx.fillRect(0, -swordWidth / 2, hiltLength, swordWidth);
+
+            // Blade (silver rectangle)
+            ctx.fillStyle = '#C0C0C0'; // Silver
+            ctx.fillRect(hiltLength, -swordWidth / 2 * 0.6, bladeLength, swordWidth * 0.6); // Thinner blade
+
+            // Outline
+            ctx.strokeStyle = C.BLACK;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, -swordWidth / 2, hiltLength, swordWidth);
+            ctx.strokeRect(hiltLength, -swordWidth / 2 * 0.6, bladeLength, swordWidth * 0.6);
+
+            ctx.restore(); // Restore context from sword drawing
+        }
+
+        ctx.restore(); // Restore context from initial translate
     }
 
     /**
@@ -534,7 +589,7 @@ export class Player {
      * @param groundY Ground Y coordinate
      * @param screenWidth Screen width
      */
-    public update(dt: number, groundY: number, screenWidth: number) { // Keep params for now, use constants if needed
+    public update(dt: number, groundY: number, screenWidth: number) {
         // Reset flags
         this.onOtherPlayerHead = false;
         this.onLeftCrossbar = false; // Reset crossbar flags
@@ -595,8 +650,28 @@ export class Player {
             }
         }
 
-        // Handle kicking OR regular movement/animations
-        if (this.isKicking) {
+        // --- Sword Swing Animation --- 
+        if (this.isSwingingSword) {
+            this.swordSwingTimer += dt;
+            const swingProgress = Math.min(this.swordSwingTimer / this.swordSwingDuration, 1.0);
+            
+            // Simple arc animation: 0 -> max -> 0 angle offset
+            // Ease in/out might look better, but let's start simple
+            const swingPhase = Math.sin(swingProgress * Math.PI); // Goes from 0 to 1 and back to 0
+            this.swordAngle = swingPhase * this.swordSwingAngleMax * (this.facingDirection === 1 ? 1 : -1); // Adjust direction
+
+            if (this.swordSwingTimer >= this.swordSwingDuration) {
+                this.isSwingingSword = false;
+                this.swordSwingTimer = 0;
+                this.swordAngle = 0; // Reset angle after swing
+            }
+        } else {
+            // Ensure angle is reset if not swinging
+            this.swordAngle = 0;
+        }
+
+        // Handle kicking OR regular movement/animations (only if NOT swinging sword)
+        if (!this.isSwingingSword && this.isKicking) {
             // Define kick animation phases here as they are used within this block
             const windupEnd = 0.2; // First 20% is windup
             // const impactFrame = 0.4; // Impact around 40% through (Keep commented or define if needed later)
@@ -652,7 +727,7 @@ export class Player {
                  this.isKicking = false;
              }
         } 
-        else {
+        else if (!this.isSwingingSword) { // Regular movement/idle (only if not kicking AND not swinging)
             // Not kicking: Handle non-kicking animations
             const isOnSurface = (this.y >= groundY || this.onLeftCrossbar || this.onRightCrossbar);
 
@@ -829,6 +904,20 @@ export class Player {
         }
     }
 
+    /**
+     * Initiates the sword swing action if the player has a sword and is able.
+     */
+    public startSwordSwing() {
+        if (this.isSword && !this.isSwingingSword && !this.isKicking && !this.isStunned && !this.isTumbling && !this.isItching) {
+            this.isSwingingSword = true;
+            this.swordSwingTimer = 0;
+            this.swordAngle = 0; // Start angle
+            // TODO: Play sword swing sound
+            // audioManager.playSound('SWORD_SWOOSH'); 
+            console.log("Player started sword swing!");
+        }
+    }
+
     // applyGravity(dt: number) { ... } // Incorporated into update
     // handleCollisions(...) { ... }
     // startKick() { ... }
@@ -860,20 +949,20 @@ export class Player {
      * Starts the tumble animation.
      */
     public startTumble() {
-        if (!this.isTumbling) { // Prevent re-triggering mid-tumble
+        if (!this.isTumbling && !this.isStunned) { // Prevent re-tumbling or tumbling while stunned
             this.isTumbling = true;
-            this.tumbleTimer = C.ROCKET_TUMBLE_DURATION; // Use constant
-            
-            // Set rotation velocity
-            const minRotSpeed = 3.0 * Math.PI; // Radians per second
-            const maxRotSpeed = 5.0 * Math.PI;
-            this.rotationVelocity = (Math.random() * (maxRotSpeed - minRotSpeed) + minRotSpeed) * (Math.random() < 0.5 ? 1 : -1);
+            this.tumbleTimer = C.ROCKET_TUMBLE_DURATION; // Use rocket duration for now
+            // Give initial random rotation velocity
+            this.rotationVelocity = (Math.random() - 0.5) * C.SWORD_TUMBLE_ROTATION_SPEED; // Use new constant
             this.rotationAngle = 0; // Start rotation from 0
-            
-            this.isKicking = false; // Cancel kick if tumbling
+            // Reset states
+            this.isJumping = false;
+            this.onOtherPlayerHead = false;
+            this.onLeftCrossbar = false;
+            this.onRightCrossbar = false;
+            this.isKicking = false; // Cancel kick
             this.kickTimer = 0;
-            // TODO: Play tumble/stun sound?
-            console.log("Player started tumbling!");
+            // Don't reset velocity here, let the hit force do that
         }
     }
 
@@ -968,6 +1057,39 @@ export class Player {
         const bowCenterX = this.x + bowHorizontalOffset;
         const bowCenterY = this.y + bowVerticalOffset;
         return { x: bowCenterX, y: bowCenterY };
+    }
+
+    /**
+     * Calculates the start and end points of the sword blade during a swing.
+     * Returns null if the player doesn't have a sword or isn't swinging.
+     * Positions are in world coordinates.
+     */
+    public getSwordCollisionShape(): { p1: Point, p2: Point } | null {
+        if (!this.isSword || !this.isSwingingSword) {
+            return null;
+        }
+
+        // --- Get Accurate Hand Position using Helper ---
+        const limbs = this._getRelativeLimbPositions();
+        // Convert relative hand pos to absolute world coordinates
+        const absRightHandPos: Point = {
+            x: this.x + limbs.relRightHandPos.x,
+            y: this.y + limbs.relRightHandPos.y
+        };
+        // ----------------------------------------------
+
+        // Use the same dimensions and base angle as in draw/collision calculation
+        const swordLength = this.armLength * 1.8;
+        const hiltLength = swordLength * 0.2;
+        const baseAngle = this.facingDirection === 1 ? -Math.PI / 2.5 : Math.PI + Math.PI / 2.5; // Point more downwards
+        const currentSwordWorldAngle = baseAngle + this.swordAngle; // Use the physics sword angle
+
+        // Calculate sword start (near hilt/guard) and end (tip) in world space
+        const swordStartOffset = hiltLength * 0.5;
+        const p1 = calculateEndPoint(absRightHandPos, swordStartOffset, currentSwordWorldAngle);
+        const p2 = calculateEndPoint(absRightHandPos, swordLength, currentSwordWorldAngle);
+
+        return { p1, p2 };
     }
 
     // --- Powerup Activation/Deactivation Methods ---

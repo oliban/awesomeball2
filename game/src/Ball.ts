@@ -237,12 +237,10 @@ export class Ball {
     }
 
     applyForce(forceX: number, forceY: number): void {
-        // Add force to existing velocity
-        console.log(`Ball applyForce: BEFORE vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)} | Applying force (${forceX.toFixed(1)}, ${forceY.toFixed(1)})`);
+        // console.log(`Ball applyForce: BEFORE vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)} | Applying force (${forceX.toFixed(1)}, ${forceY.toFixed(1)})`); // REMOVE LOG
         this.vx += forceX;
         this.vy += forceY;
-        console.log(`Ball applyForce: AFTER vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`);
-        // TODO: Consider mass/delta time if implementing more realistic physics
+        // console.log(`Ball applyForce: AFTER vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`); // REMOVE LOG
     }
 
     applyKick(forceX: number, forceY: number): void {
