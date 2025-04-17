@@ -289,7 +289,7 @@ export class GameManager {
                     const dx = this.ball.x - kickPoint.x;
                     const dy = this.ball.y - kickPoint.y;
                     const distSq = dx * dx + dy * dy;
-                    const kickRadius = this.ball.radius + 40; // Increased radius for bicycle kicks
+                    const kickRadius = this.ball.radius + 60; // Increased radius further for bicycle kicks (was 40)
                     const kickRadiusSq = kickRadius * kickRadius;
 
                     console.log(`[Bicycle Kick] Check: dist=${Math.sqrt(distSq).toFixed(1)}, radius=${Math.sqrt(kickRadiusSq).toFixed(1)}`);
@@ -299,25 +299,39 @@ export class GameManager {
                         console.log(`BICYCLE KICK CONNECT! Player: ${player === this.player1 ? 1:2}, KickPoint: (${kickPoint.x.toFixed(1)}, ${kickPoint.y.toFixed(1)}), Ball: (${this.ball.x.toFixed(1)}, ${this.ball.y.toFixed(1)})`);
                         audioManager.playSound('KICK_1'); // Play kick sound on connect
 
-                        // --- Bicycle Kick Force --- 
-                        console.log("Applying Bicycle Kick force!");
-                        const bicycleKickPowerMultiplier = 2.5; // Increase power for more impact
-                        const bicycleKickUpwardFactor = 1.8; // More upward force
-                        
-                        const kickVx = player.facingDirection * C.BASE_KICK_FORCE_X * bicycleKickPowerMultiplier * 0.7;
-                        const kickVy = C.BASE_KICK_FORCE_Y * bicycleKickPowerMultiplier * bicycleKickUpwardFactor;
-                        
-                        // Apply the force with a little randomness
-                        const originalAngle = Math.atan2(kickVy, kickVx);
-                        const originalMagnitude = Math.sqrt(kickVx * kickVx + kickVy * kickVy);
-                        const maxRandomAngleOffset = Math.PI / 18; // +/- 10 degrees
-                        const randomOffset = (Math.random() * 2 - 1) * maxRandomAngleOffset;
-                        const finalAngle = originalAngle + randomOffset;
-                        const randomizedKickVx = Math.cos(finalAngle) * originalMagnitude;
-                        const randomizedKickVy = Math.sin(finalAngle) * originalMagnitude;
+                        // --- Bicycle Kick Force (Direction-Based) --- 
+                        console.log("Applying Bicycle Kick force (Direction-Based)!");
+                        const bicycleKickPowerMultiplier = 2.5; // Keep power level consistent
+                        // Define a base magnitude (can be tuned)
+                        const baseMagnitude = C.BASE_KICK_FORCE_X * bicycleKickPowerMultiplier * 1.5; // Example magnitude derived from X force
+
+                        // Calculate player's approximate rotation center (world coordinates)
+                        const rotationCenterYOffset = -(player.legLength + player.torsoLength / 2);
+                        const absRotationCenterX = player.x;
+                        const absRotationCenterY = player.y + rotationCenterYOffset;
+
+                        // Calculate direction vector from center to kick point
+                        let dirX = kickPoint.x - absRotationCenterX;
+                        let dirY = kickPoint.y - absRotationCenterY;
+                        const distFromCenter = Math.sqrt(dirX * dirX + dirY * dirY);
+
+                        // Normalize the direction vector
+                        if (distFromCenter > 0) {
+                            dirX /= distFromCenter;
+                            dirY /= distFromCenter;
+                        } else {
+                            // If kickPoint is exactly at center, use player facing direction as fallback
+                            dirX = player.facingDirection;
+                            dirY = -0.5; // Default slight upward angle
+                        }
+
+                        // Calculate final velocity based on direction and magnitude
+                        // Removed randomness for now, as direction should be more precise
+                        const finalKickVx = dirX * baseMagnitude;
+                        const finalKickVy = dirY * baseMagnitude;
 
                         // Apply the final force
-                        this.ball.applyKick(randomizedKickVx, randomizedKickVy);
+                        this.ball.applyKick(finalKickVx, finalKickVy);
                         
                         // --- Emit Particles ---
                         this.particleSystem.emit('kick', kickPoint.x, kickPoint.y, 15, { 
