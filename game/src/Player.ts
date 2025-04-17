@@ -62,6 +62,13 @@ function lerp(start: number, end: number, t: number): number {
 // Simple easing functions
 function easeInQuad(t: number): number { return t * t; }
 function easeOutQuad(t: number): number { return t * (2 - t); }
+function easeInOutQuad(t: number): number {
+    if (t < 0.5) {
+        return 2 * t * t;
+    } else {
+        return 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+}
 
 // ADD a new interface for the return type of the helper
 interface RelativeLimbPositions {
@@ -101,8 +108,10 @@ export class Player {
     public isJumping: boolean;
     public hasJumpedThisPress: boolean = false; // Added flag for particle emission
     public isKicking: boolean;
+    public isBicycleKicking: boolean = false; // NEW state for bicycle kick
+    public bicycleKickTimer: number = 0; // Timer for bicycle kick animation/logic
     public kickTimer: number;
-    public kickDuration: number = KICK_DURATION_SECONDS; 
+    public kickDuration: number = KICK_DURATION_SECONDS;
     public walkCycleTimer: number;
     public facingDirection: number = 1; // 1 for right, -1 for left
     public onOtherPlayerHead: boolean = false;
@@ -230,6 +239,8 @@ export class Player {
 
         this.isJumping = false;
         this.isKicking = false;
+        this.isBicycleKicking = false; // Initialize bicycle kick state
+        this.bicycleKickTimer = 0;     // Initialize bicycle kick timer
         this.kickTimer = 0;
         this.walkCycleTimer = 0;
         this.facingDirection = facing;
@@ -282,6 +293,14 @@ export class Player {
         let drawRShinAngle = this.rightShinAngle;
         let drawLArmAngle = this.leftArmAngle;
         let drawRArmAngle = this.rightArmAngle;
+
+        // Ensure all angles have valid values
+        if (isNaN(drawLThighAngle)) drawLThighAngle = STAND_ANGLE;
+        if (isNaN(drawRThighAngle)) drawRThighAngle = STAND_ANGLE;
+        if (isNaN(drawLShinAngle)) drawLShinAngle = 0;
+        if (isNaN(drawRShinAngle)) drawRShinAngle = 0;
+        if (isNaN(drawLArmAngle)) drawLArmAngle = STAND_ANGLE;
+        if (isNaN(drawRArmAngle)) drawRArmAngle = STAND_ANGLE;
 
         // --- Itching Animation Override (Visual Only) ---
         let isDrawingItching = this.isItching;
@@ -361,6 +380,14 @@ export class Player {
             ctx.translate(0, rotationCenterY); // Move origin UP from feet to rotation center
             ctx.rotate(this.rotationAngle);
             ctx.translate(0, -rotationCenterY); // Move origin back DOWN to feet
+        }
+        // --- ADD ROTATION FOR BICYCLE KICK --- 
+        else if (this.isBicycleKicking) {
+            // Rotate around the same approximate center
+            const rotationCenterY = -(this.legLength + this.torsoLength / 2); 
+            ctx.translate(0, rotationCenterY); 
+            ctx.rotate(this.rotationAngle); // Use the angle set in update()
+            ctx.translate(0, -rotationCenterY); 
         }
 
         // --- Drawing (All coordinates are relative to player feet 0,0) ---
@@ -731,6 +758,87 @@ export class Player {
                  this.isKicking = false;
              }
         } 
+        // --- NEW: Handle Bicycle Kick State --- 
+        else if (this.isBicycleKicking) {
+            // console.log(`[Bicycle Kick Update] Start - Timer: ${this.bicycleKickTimer.toFixed(3)}, dt: ${dt.toFixed(4)}`);
+            
+            const bicycleKickTotalDuration = 0.8; // Shorten duration slightly for snappiness
+            const kickExtensionStartTime = bicycleKickTotalDuration * 0.3; // Start extending leg earlier
+            const kickExtensionPeakTime = bicycleKickTotalDuration * 0.5; // Peak extension at midpoint
+            const kickRetractionStartTime = bicycleKickTotalDuration * 0.6; // Start retracting after peak
+            
+            this.bicycleKickTimer += dt;
+            const overallProgress = Math.min(this.bicycleKickTimer / bicycleKickTotalDuration, 1.0);
+
+            // --- Rotation (Smoother EaseInOut) --- 
+            let targetRotation = lerp(0, Math.PI * 2, easeInOutQuad(overallProgress)); // Full rotation
+            
+            // Apply rotation based on facing direction (Rotate Backwards)
+            this.rotationAngle = this.facingDirection === 1 ? -targetRotation : targetRotation;
+
+            // --- Limb Animation (More Dynamic) --- 
+            const tuckedThighAngle = STAND_ANGLE - Math.PI * 0.4; 
+            const tuckedShinAngle = Math.PI * 0.4 * 1.5; 
+            // Redefine extended angles relative to STAND_ANGLE to avoid issues when rotated
+            const extendedThighAngle = STAND_ANGLE + Math.PI * 1.1; // Point leg backwards relative to standard upright pose
+            const extendedShinAngle = -0.1; // Slightly bent shin relative to thigh
+
+            if (this.bicycleKickTimer < kickExtensionStartTime) {
+                // Still tucking in / preparing
+                this.leftThighAngle = tuckedThighAngle;
+                this.rightThighAngle = tuckedThighAngle;
+                this.leftShinAngle = tuckedShinAngle;
+                this.rightShinAngle = tuckedShinAngle;
+            } else if (this.bicycleKickTimer < kickRetractionStartTime) {
+                // Extending towards peak kick
+                // Calculate progress within the extension phase (0 to 1)
+                const extensionProgress = (this.bicycleKickTimer - kickExtensionStartTime) / (kickExtensionPeakTime - kickExtensionStartTime);
+                const easedExtensionProgress = easeOutQuad(Math.min(extensionProgress, 1.0)); // Clamp progress
+
+                // Interpolate angles for both legs towards extended position
+                this.leftThighAngle = lerp(tuckedThighAngle, extendedThighAngle, easedExtensionProgress);
+                this.rightThighAngle = lerp(tuckedThighAngle, extendedThighAngle, easedExtensionProgress); // Keep symmetric
+                this.leftShinAngle = lerp(tuckedShinAngle, extendedShinAngle, easedExtensionProgress);
+                this.rightShinAngle = lerp(tuckedShinAngle, extendedShinAngle, easedExtensionProgress); // Keep symmetric
+            } else { // After kick peak, start retracting for landing
+                // Retract legs slightly for landing / follow-through
+                // Calculate progress within the retraction phase (0 to 1)
+                const retractionProgress = (this.bicycleKickTimer - kickRetractionStartTime) / (bicycleKickTotalDuration - kickRetractionStartTime);
+                const easedRetractionProgress = easeInQuad(Math.min(retractionProgress, 1.0)); // Clamp progress
+
+                // Interpolate back towards a tucked/neutral landing pose 
+                const landingThighAngle = STAND_ANGLE - Math.PI * 0.2; // Less tucked than initial
+                const landingShinAngle = Math.PI * 0.3;
+
+                this.leftThighAngle = lerp(extendedThighAngle, landingThighAngle, easedRetractionProgress);
+                this.rightThighAngle = lerp(extendedThighAngle, landingThighAngle, easedRetractionProgress); // Symmetric
+                this.leftShinAngle = lerp(extendedShinAngle, landingShinAngle, easedRetractionProgress);
+                this.rightShinAngle = lerp(extendedShinAngle, landingShinAngle, easedRetractionProgress); // Symmetric
+            }
+            
+            // --- Arm Animation --- (Flail based on rotation)
+            this.leftArmAngle = -this.rotationAngle + STAND_ANGLE + Math.PI * 0.2; // Counter-rotate slightly
+            this.rightArmAngle = -this.rotationAngle + STAND_ANGLE - Math.PI * 0.2;
+
+            // --- Physics --- 
+            this.vx = 0; // Lock horizontal movement
+            // Gravity applied outside this block
+
+            // --- End State --- 
+            if (overallProgress >= 1.0) {
+                // Finished - reset state
+                this.isBicycleKicking = false;
+                this.bicycleKickTimer = 0;
+                this.rotationAngle = 0; // Ensure upright
+                // Reset limbs towards standing pose immediately after finish
+                this.leftThighAngle = STAND_ANGLE;
+                this.rightThighAngle = STAND_ANGLE;
+                this.leftShinAngle = 0;
+                this.rightShinAngle = 0;
+                this.leftArmAngle = STAND_ANGLE;
+                this.rightArmAngle = STAND_ANGLE;
+            }
+        }
         else if (!this.isSwingingSword) { // Regular movement/idle (only if not kicking AND not swinging)
             // Not kicking: Handle non-kicking animations
             const isOnSurface = (this.y >= groundY || this.onLeftCrossbar || this.onRightCrossbar);
@@ -881,6 +989,40 @@ export class Player {
             // const kickSounds = ['KICK_1', 'KICK_2', 'KICK_3'];
             // const randomKickSound = kickSounds[Math.floor(Math.random() * kickSounds.length)];
             // audioManager.playSound(randomKickSound);
+        }
+    }
+
+    /**
+     * Initiates the bicycle kick action if the player is eligible.
+     */
+    public startBicycleKick() {
+        const canStart = !this.isKicking && !this.isStunned && !this.isTumbling && !this.isItching && !this.isBicycleKicking;
+        if (!canStart) {
+            console.warn(`[Player.startBicycleKick] BLOCKED! States: isKicking=${this.isKicking}, isStunned=${this.isStunned}, isTumbling=${this.isTumbling}, isItching=${this.isItching}, isBicycleKicking=${this.isBicycleKicking}`);
+        }
+        
+        if (canStart) {
+            console.log(`[Player.startBicycleKick] Starting bicycle kick for player ${this.teamColor}`); // Added success log
+            this.isBicycleKicking = true;
+            this.bicycleKickTimer = 0;
+            this.rotationAngle = 0;
+            
+            // Initialize leg positions to ensure they're visible throughout the animation
+            const tuckedThighAngle = STAND_ANGLE - Math.PI * 0.4;
+            const tuckedShinAngle = Math.PI * 0.4 * 1.5;
+            
+            this.leftThighAngle = tuckedThighAngle;
+            this.rightThighAngle = tuckedThighAngle;
+            this.leftShinAngle = tuckedShinAngle;
+            this.rightShinAngle = tuckedShinAngle;
+            
+            // Reset kick impact tracking
+            this.minKickDistSq = Infinity;
+            this.kickImpactForceX = 0;
+            this.kickImpactForceY = 0;
+            
+            // Play bicycle kick sound if available
+            audioManager.playSound('KICK_1'); // Using KICK_1 for now
         }
     }
 
