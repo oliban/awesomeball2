@@ -1185,32 +1185,86 @@ export class Player {
      */
     getBicycleKickImpactPoint(): Point | null {
         if (!this.isBicycleKicking) return null;
+
+        // --- Re-calculate current limb angles based on timer --- 
+        // This duplicates logic from update, but ensures we get the precise angles
+        // for collision detection at the *exact* moment this function is called.
+        const bicycleKickTotalDuration = 1.0;
+        const keyframes = [
+            // KF0 (0%): Initial Slight Tuck / Lean Back
+            { time: 0.0, angles: { nkThigh: STAND_ANGLE - 0.2 * Math.PI, nkShin: 0.3 * Math.PI, kThigh: STAND_ANGLE - 0.1 * Math.PI, kShin: 0.2 * Math.PI, lArm: STAND_ANGLE + 0.2 * Math.PI, rArm: STAND_ANGLE - 0.2 * Math.PI, rotationMag: 0 } },
+            // KF1 (20%): Windup Peak / Start Rotation
+            { time: 0.2, angles: { nkThigh: STAND_ANGLE - 0.7 * Math.PI, nkShin: 0.8 * Math.PI, kThigh: STAND_ANGLE + 0.3 * Math.PI, kShin: 0.6 * Math.PI, lArm: STAND_ANGLE + 0.6 * Math.PI, rArm: STAND_ANGLE - 0.7 * Math.PI, rotationMag: 0.4 * Math.PI } }, 
+            // KF2 (50%): Impact / Inverted / Kicking Leg Extended
+            { time: 0.5, angles: { nkThigh: STAND_ANGLE - 0.9 * Math.PI, nkShin: 0.8 * Math.PI, kThigh: STAND_ANGLE - 1.5 * Math.PI, kShin: 0.0 * Math.PI, lArm: STAND_ANGLE - 0.8 * Math.PI, rArm: STAND_ANGLE - 0.8 * Math.PI, rotationMag: 1.0 * Math.PI } }, 
+            // KF3 (75%): Follow-through / Rotating Down / Kicking Leg Retracting
+            { time: 0.75, angles: { nkThigh: STAND_ANGLE - 0.8 * Math.PI, nkShin: 0.9 * Math.PI, kThigh: STAND_ANGLE - 0.6 * Math.PI, kShin: 0.7 * Math.PI, lArm: STAND_ANGLE - 0.5 * Math.PI, rArm: STAND_ANGLE + 0.5 * Math.PI, rotationMag: 1.6 * Math.PI } },
+            // KF4 (100%): End pose / Blending towards landing
+            { time: 1.0, angles: { nkThigh: STAND_ANGLE - 0.4 * Math.PI, nkShin: 0.5 * Math.PI, kThigh: STAND_ANGLE - 0.4 * Math.PI, kShin: 0.5 * Math.PI, lArm: STAND_ANGLE, rArm: STAND_ANGLE, rotationMag: 2.0 * Math.PI } } 
+        ];
+        const overallProgress = Math.min(this.bicycleKickTimer / bicycleKickTotalDuration, 1.0); 
+        let startKeyframe = keyframes[0];
+        let endKeyframe = keyframes[1];
+        for (let i = 0; i < keyframes.length - 1; i++) {
+            if (overallProgress >= keyframes[i].time && overallProgress < keyframes[i + 1].time) {
+                startKeyframe = keyframes[i];
+                endKeyframe = keyframes[i + 1];
+                break;
+            }
+        }
+        const startAngles = startKeyframe.angles;
+        const endAngles = endKeyframe.angles;
+        const segmentDuration = endKeyframe.time - startKeyframe.time;
+        const segmentProgress = segmentDuration > 0 
+            ? (overallProgress - startKeyframe.time) / segmentDuration 
+            : 1.0;
+        const interpolatedKThigh = lerp(startAngles.kThigh, endAngles.kThigh, segmentProgress);
+        const interpolatedKShin = lerp(startAngles.kShin, endAngles.kShin, segmentProgress);
+        const interpolatedNkThigh = lerp(startAngles.nkThigh, endAngles.nkThigh, segmentProgress);
+        const interpolatedNkShin = lerp(startAngles.nkShin, endAngles.nkShin, segmentProgress);
+
+        // --- Determine which leg is kicking and its current angles --- 
+        const isRightLegKicking = this.facingDirection !== 1;
+        const kickingThighAngle = isRightLegKicking ? interpolatedKThigh : interpolatedKThigh;
+        const kickingShinAngle = isRightLegKicking ? interpolatedKShin : interpolatedKShin;
         
-        console.log(`[BicycleKick DETAIL] Progress: ${(this.bicycleKickTimer / 1.0).toFixed(2)}, Rotation: ${(this.rotationAngle * 180 / Math.PI).toFixed(1)}°`);
+        // --- Calculate Relative Foot Position (based on current interpolated angles) --- 
+        const thighLength = this.legLength * 0.5;
+        const shinLength = this.legLength * 0.5;
+        // Relative hip position (consistent with _getRelativeLimbPositions)
+        const relHipPos: Point = { x: 0, y: -this.legLength }; 
+        // Relative knee position of the kicking leg
+        const relKneePos = calculateEndPoint(relHipPos, thighLength, kickingThighAngle);
+        // Relative foot position of the kicking leg
+        const relFootPos = calculateEndPoint(relKneePos, shinLength, kickingThighAngle + kickingShinAngle);
+
+        // --- Apply Player Rotation to the Relative Foot Position --- 
+        // Define the center of rotation (same as in draw method)
+        const rotationCenterX = 0; // Relative X center is 0
+        const rotationCenterY = -(this.legLength + this.torsoLength / 2); // Relative Y center
         
-        // IMPROVED: Create a larger area for impact detection to ensure hits register
-        // Calculate position based on the rotation
-        const radius = this.legLength * 1.2; // Increased radius for better hit detection
-        
-        // Get rotation phase - useful for debugging
-        let phase = "";
-        const progress = this.bicycleKickTimer / 1.0;
-        if (progress < 0.2) phase = "windup";
-        else if (progress < 0.5) phase = "rising";
-        else if (progress < 0.75) phase = "impact";
-        else phase = "recovery";
-        
-        // Use the rotation angle to determine where the foot is
-        // The impact point should trace an arc as the player rotates
-        const angle = this.rotationAngle + (this.facingDirection > 0 ? Math.PI * 0.25 : -Math.PI * 0.25);
-        
-        // Calculate the kicking foot position
-        const footX = this.x + Math.cos(angle) * radius; // REMOVED * this.facingDirection
-        const footY = this.y - Math.sin(angle) * radius;
-        
-        console.log(`[BicycleKick] Impact Point: (${footX.toFixed(1)}, ${footY.toFixed(1)}), Angle: ${(angle * 180 / Math.PI).toFixed(1)}°, Phase: ${phase}, Facing: ${this.facingDirection}`);
-        
-        return { x: footX, y: footY };
+        // Translate relative foot position to be relative to the rotation center
+        const footRelativeToCenterX = relFootPos.x - rotationCenterX;
+        const footRelativeToCenterY = relFootPos.y - rotationCenterY;
+
+        // Apply the rotation (this.rotationAngle is set in update)
+        const cosTheta = Math.cos(this.rotationAngle);
+        const sinTheta = Math.sin(this.rotationAngle);
+        const rotatedX = footRelativeToCenterX * cosTheta - footRelativeToCenterY * sinTheta;
+        const rotatedY = footRelativeToCenterX * sinTheta + footRelativeToCenterY * cosTheta;
+
+        // Translate the rotated point back relative to the player's feet position (0, 0)
+        const finalRelX = rotatedX + rotationCenterX;
+        const finalRelY = rotatedY + rotationCenterY;
+
+        // --- Convert to Absolute World Coordinates --- 
+        const absFootX = this.x + finalRelX;
+        const absFootY = this.y + finalRelY;
+
+        // Debugging log (optional)
+        console.log(`[BicycleKickImpact] Timer: ${this.bicycleKickTimer.toFixed(2)} Prog: ${overallProgress.toFixed(2)} Rot: ${(this.rotationAngle * 180 / Math.PI).toFixed(1)}° RelFoot: (${relFootPos.x.toFixed(1)}, ${relFootPos.y.toFixed(1)}) AbsFoot: (${absFootX.toFixed(1)}, ${absFootY.toFixed(1)})`);
+
+        return { x: absFootX, y: absFootY };
     }
 
     /**
