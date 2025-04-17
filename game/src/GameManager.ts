@@ -106,6 +106,7 @@ export class GameManager {
         this.ball.y = C.GROUND_Y - 100;
         this.ball.vx = 0;
         this.ball.vy = 0;
+        // Ball freeze timer resets automatically via its update method
 
         // Reset Player 1
         this.player1.x = C.SCREEN_WIDTH * 0.25;
@@ -116,7 +117,22 @@ export class GameManager {
         this.player1.isKicking = false;
         this.player1.isJumping = false;
         this.player1.isTumbling = false;
-        // TODO: Reset other states like stun, powerups if needed
+        this.player1.isStunned = false; // Reset stun
+        this.player1.stunTimer = 0;
+        this.player1.isBeingPushedBack = false; // Reset pushback
+        this.player1.pushbackTimer = 0;
+        this.player1.isItching = false; // Reset itch
+        // Reset public powerup/weapon properties
+        this.player1.speedMultiplier = 1.0;
+        this.player1.jumpMultiplier = 1.0;
+        this.player1.sizeMultiplier = 1.0;
+        this.player1.hasRocketLauncher = false;
+        this.player1.rocketAmmo = 0;
+        this.player1.hasBow = false;
+        this.player1.arrowAmmo = 0;
+        this.player1.isSword = false;
+        // NOTE: Internal powerup timers (speedBoostTimer, etc.) are private in Player
+        // and cannot be reset directly from here without a public Player.resetState() method.
 
         // Reset Player 2
         this.player2.x = C.SCREEN_WIDTH * 0.75;
@@ -127,17 +143,44 @@ export class GameManager {
         this.player2.isKicking = false;
         this.player2.isJumping = false;
         this.player2.isTumbling = false;
-        // TODO: Reset other states like stun, powerups if needed
+        this.player2.isStunned = false; // Reset stun
+        this.player2.stunTimer = 0;
+        this.player2.isBeingPushedBack = false; // Reset pushback
+        this.player2.pushbackTimer = 0;
+        this.player2.isItching = false; // Reset itch
+        // Reset public powerup/weapon properties
+        this.player2.speedMultiplier = 1.0;
+        this.player2.jumpMultiplier = 1.0;
+        this.player2.sizeMultiplier = 1.0;
+        this.player2.hasRocketLauncher = false;
+        this.player2.rocketAmmo = 0;
+        this.player2.hasBow = false;
+        this.player2.arrowAmmo = 0;
+        this.player2.isSword = false;
+        // NOTE: Internal powerup timers cannot be reset directly from here.
 
         this.particleSystem.clear(); // Clear particles on reset
     }
 
     private startNewMatch(): void {
+        console.log("Executing startNewMatch..."); // Add log
         this.player1Score = 0;
         this.player2Score = 0;
-        this.resetPositions();
+        this.resetPositions(); // Includes player state reset now
+        
+        // Clear active game elements
+        this.activeRockets = [];
+        this.activeArrows = [];
+        // Directly reset the private array in PowerupManager (less ideal, but avoids modifying PowerupManager now)
+        if (this.powerupManager && Array.isArray(this.powerupManager['activePowerups'])) {
+             this.powerupManager['activePowerups'] = []; 
+        } else {
+            console.warn("Could not clear powerups in PowerupManager");
+        }
+        
         this.currentState = C.GameState.PLAYING;
         this.particleSystem.clear(); // Also clear particles here
+        console.log("startNewMatch finished. State set to PLAYING."); // Add log
     }
 
     private checkGoal(): void {
@@ -164,25 +207,32 @@ export class GameManager {
                 scorer = 1;
             }
             if (goalScored) {
-                // Play goal sound based on scorer
+                // Play standard goal sound first (optional, could be removed if score announcement is enough)
                 if (scorer === 1) {
-                    // TODO: Randomize between PLAYER1_GOAL_1, 2, 3?
                     audioManager.playSound('PLAYER1_GOAL_1');
                 } else if (scorer === 2) {
-                    // TODO: Randomize between PLAYER2_GOAL_1, 2, 3?
                     audioManager.playSound('PLAYER2_GOAL_1');
                 }
-                // TODO: Add general goal effects sound?
 
                 this.particleSystem.emit('goal', this.ball.x, this.ball.y, 50); // Emit goal particles
-                this.currentState = C.GameState.GOAL_SCORED;
-                this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
-
+                
                 // Check for Match Over
                 if (this.player1Score >= MATCH_POINT_LIMIT || this.player2Score >= MATCH_POINT_LIMIT) {
                     this.currentState = C.GameState.MATCH_OVER;
                     this.matchOverTimer = 3.0; // Display match over message for 3 seconds
-                    // TODO: Check for GAME_OVER later
+                    // Play winner announcement sound
+                    if (this.player1Score >= MATCH_POINT_LIMIT) {
+                        audioManager.playSound('NILS_WINS');
+                    } else {
+                        audioManager.playSound('HARRY_WINS');
+                    }
+                } else {
+                    // If not match over, set state to goal scored and announce score
+                    this.currentState = C.GameState.GOAL_SCORED;
+                    this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
+
+                    // Announce the score after a slight delay
+                    this.announceScore(); 
                 }
             }
         }
@@ -910,6 +960,14 @@ export class GameManager {
     private update(dt: number): void {
         this.inputHandler.update(); 
 
+        // --- Handle Match Over Reset Listener --- 
+        // Separate listener for match over state to prevent conflict with game start
+        if (this.currentState === C.GameState.MATCH_OVER && this.matchOverTimer <= 0 && !this.isMatchOverListenerActive) {
+            console.log("Match Over timer ended. Waiting for Enter to restart...");
+            this.addMatchOverRestartListener();
+        }
+        // --- End Match Over Reset Listener ---
+
         switch (this.currentState) {
             case C.GameState.WELCOME:
                 // Check for any key press to start
@@ -1190,20 +1248,51 @@ export class GameManager {
                     this.resetPositions(); // Reset after delay
                     this.currentState = C.GameState.PLAYING; // Resume playing
                 }
+                // Keep updating particles during goal celebration
+                this.particleSystem.update(dt);
                 break;
             case C.GameState.MATCH_OVER:
                 this.matchOverTimer -= dt;
                 if (this.matchOverTimer <= 0) {
-                    // For now, just restart a new match
-                    // TODO: Implement game win check and GAME_OVER state here
-                    console.log("Match Over! Starting new match.");
-                    this.startNewMatch();
+                    // Don't reset immediately - wait for the Enter key press
+                    // Logic to add the listener is now handled outside the switch
                 }
+                 // Keep updating particles during match over
+                 this.particleSystem.update(dt);
                 break;
+            // Add other states if needed (PAUSED, GAME_OVER, etc.)
+        }
 
-            // TODO: Add GAME_OVER and TROPHY states later
+        // this.inputHandler.clearJustPressed(); // REMOVED: InputHandler.update() already handles this at the start
+    }
+
+    // --- Add helper methods for Match Over listener ---
+    private isMatchOverListenerActive: boolean = false;
+
+    private handleMatchOverKeyPress = (event: KeyboardEvent) => {
+        // Check for Enter, P1 Kick ('s'), or P2 Kick ('arrowdown')
+        const key = event.key.toLowerCase(); // Ensure lowercase check
+        if (key === 'enter' || key === 's' || key === 'arrowdown') {
+            console.log(`Restart key pressed (${event.key}) after Match Over. Restarting game...`);
+            this.startNewMatch(); // Reset scores and start playing
+            this.removeMatchOverRestartListener(); // Clean up listener
+        }
+    };
+
+    private addMatchOverRestartListener(): void {
+        if (!this.isMatchOverListenerActive) {
+            document.addEventListener('keydown', this.handleMatchOverKeyPress);
+            this.isMatchOverListenerActive = true;
         }
     }
+
+    private removeMatchOverRestartListener(): void {
+        if (this.isMatchOverListenerActive) {
+            document.removeEventListener('keydown', this.handleMatchOverKeyPress);
+            this.isMatchOverListenerActive = false;
+        }
+    }
+    // --- End helper methods ---
 
     private render(): void {
         // Clear canvas
@@ -1296,23 +1385,28 @@ export class GameManager {
         };
         this.uiManager.draw(uiState);
 
-        // Draw Goal Message if needed
-        if (this.currentState === C.GameState.GOAL_SCORED) {
+        // Draw Goal Message ONLY if Goal Scored and NOT Match Over
+        if (this.currentState === C.GameState.GOAL_SCORED) { // No need to check timer, just state
             this.ctx.fillStyle = C.YELLOW; // Example color
             this.ctx.font = '60px Impact';
             this.ctx.textAlign = 'center';
             this.ctx.fillText("GOAL!", C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 3);
         }
-
-        // Draw Match Over Message if needed
-        if (this.currentState === C.GameState.MATCH_OVER) {
+        // Draw Match Over Message (this takes precedence over Goal message if state is MATCH_OVER)
+        else if (this.currentState === C.GameState.MATCH_OVER) {
             this.ctx.fillStyle = C.WHITE;
             this.ctx.font = '50px Arial';
             this.ctx.textAlign = 'center';
-            const winner = this.player1Score >= MATCH_POINT_LIMIT ? "Player 1" : "Player 2";
-            this.ctx.fillText(`${winner} Wins Match!`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 30);
+            const winnerName = this.player1Score >= MATCH_POINT_LIMIT ? "Nils" : "Harry"; // Use names
+            this.ctx.fillText(`${winnerName} Wins!`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 30); // Simplified message
             this.ctx.font = '30px Arial';
             this.ctx.fillText(`Score: ${this.player1Score} - ${this.player2Score}`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 + 20);
+            // Add restart prompt after timer expires
+            if (this.matchOverTimer <= 0) {
+                 this.ctx.font = '25px Arial';
+                 this.ctx.fillStyle = C.YELLOW; // Highlight prompt
+                 this.ctx.fillText(`Press Enter or Kick (S / ↓) to Play Again`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 + 70);
+            }
         }
     }
 
@@ -1480,5 +1574,61 @@ export class GameManager {
         this.particleSystem.emit('explosion', x, y, 50, { radius: C.ROCKET_BLAST_RADIUS }); // Add explosion particle type
 
         // TODO: Refine visual/audio effects if needed
+    }
+
+    // New method to handle sequenced score announcement
+    private announceScore(): void {
+        // Increased delay MORE to allow sounds to finish AND clear debounce
+        const soundSequenceDelay = 1100; // milliseconds delay (must be > debounceInterval in AudioManager)
+        let soundsToPlay: string[] = [];
+
+        let leaderKey: string | null = null;
+        let leaderScoreKey: string | null = null;
+        let trailerScoreKey: string | null = null;
+
+        if (this.player1Score > this.player2Score) {
+            leaderKey = 'NILS_AHEAD';
+            leaderScoreKey = 'NUM_' + this.player1Score;
+            trailerScoreKey = 'NUM_' + this.player2Score;
+        } else if (this.player2Score > this.player1Score) {
+            leaderKey = 'HARRY_AHEAD';
+            leaderScoreKey = 'NUM_' + this.player2Score;
+            trailerScoreKey = 'NUM_' + this.player1Score;
+        } else {
+            // Scores are tied - just play the numbers, maybe P1 score then P2 score
+            leaderScoreKey = 'NUM_' + this.player1Score;
+            trailerScoreKey = 'NUM_' + this.player2Score;
+            // No leader announcement needed
+        }
+
+        // Construct sound key sequence, checking if score is within playable range (0-5)
+        if (leaderKey) {
+            soundsToPlay.push(leaderKey);
+        }
+        if (leaderScoreKey && parseInt(leaderScoreKey.split('_')[1]) <= 5) {
+            soundsToPlay.push(leaderScoreKey);
+        }
+        // Always add the trailer score if it's valid, even if tied
+        if (trailerScoreKey && parseInt(trailerScoreKey.split('_')[1]) <= 5) {
+            soundsToPlay.push(trailerScoreKey);
+        }
+
+        // Play sounds sequentially using chained setTimeouts
+        let currentDelay = 50; // Initial small delay after goal sound
+        const playNextSound = (index: number) => {
+            if (index < soundsToPlay.length) {
+                const soundKey = soundsToPlay[index];
+                setTimeout(() => {
+                    console.log(`Playing score announcement sound: ${soundKey}`); // Log which sound is playing
+                    audioManager.playSound(soundKey);
+                    playNextSound(index + 1); // Schedule the next sound
+                }, soundSequenceDelay); // Use the fixed delay between sounds
+            }
+        };
+
+        // Start the sequence after the initial delay
+        setTimeout(() => {
+             playNextSound(0);
+        }, currentDelay);
     }
 }

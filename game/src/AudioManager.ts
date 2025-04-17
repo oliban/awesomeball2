@@ -19,18 +19,8 @@ export class AudioManager {
   private soundsLoaded: boolean = false;
   private loadingPromise: Promise<void> | null = null;
   private activeLoops: Map<string, AudioBufferSourceNode> = new Map(); // To track looped sounds
-  private soundFiles: { [key: string]: string } = {
-    'KICK_1': 'sounds/kick1.wav',
-    'KICK_2': 'sounds/kick2.wav',
-    'KICK_3': 'sounds/kick3.wav',
-    'JUMP_1': 'sounds/jump1.wav',
-    'LAND_1': 'sounds/land1.wav',
-    'LAND_2': 'sounds/land2.wav',
-    'GOAL_1': 'sounds/goal1.wav',
-    // Missing Rocket Sounds
-    // 'ROCKET_FIRE_1': 'sounds/rocket_fire1.wav',
-    // 'ROCKET_EXPLODE_1': 'sounds/rocket_explode1.wav',
-  };
+  private lastPlayedTimes: Map<string, number> = new Map(); // Track last play time for debounce
+  private readonly debounceInterval: number = 1000; // Debounce interval in milliseconds
 
   constructor() {
     try {
@@ -64,15 +54,26 @@ export class AudioManager {
     const loadPromises: Promise<void>[] = [];
 
     this.loadingPromise = new Promise(async (resolve, reject) => {
+      console.log("Starting sound loading..."); // Added log
+      let loadCount = 0;
+      const totalSounds = Object.keys(soundAssets).length;
+
       for (const key in soundAssets) {
         if (Object.prototype.hasOwnProperty.call(soundAssets, key)) {
           const path = soundAssets[key];
-          loadPromises.push(this.loadSound(key, path));
+          // Load sounds sequentially or in batches if needed, but parallel is fine for now
+          loadPromises.push(
+            this.loadSound(key, path).then(() => {
+              loadCount++;
+              // console.log(`Loaded ${loadCount}/${totalSounds}: ${key}`); // Optional progress log
+            })
+          );
         }
       }
 
       try {
         await Promise.all(loadPromises);
+        console.log("All sounds loaded successfully!");
         this.soundsLoaded = true;
         this.loadingPromise = null; // Reset loading promise
         resolve();
@@ -111,15 +112,25 @@ export class AudioManager {
   }
 
   /**
-   * Plays a loaded sound.
+   * Plays a loaded sound, respecting debounce interval.
    * @param key - The key of the sound to play.
    * @param volume - Optional volume level (0 to 1). Defaults to 1.
    * @param loop - Optional flag to loop the sound. Defaults to false.
    */
   playSound(key: string, volume: number = 1, loop: boolean = false): void {
+    const currentTime = performance.now();
+
+    // --- Debounce Check --- 
+    const lastPlayed = this.lastPlayedTimes.get(key);
+    if (lastPlayed && (currentTime - lastPlayed < this.debounceInterval)) {
+        // console.log(`Debounced sound: ${key}`); // Optional log
+        return; // Don't play if recently played
+    }
+    // --- End Debounce Check ---
+
     if (!this.audioContext || !this.soundsLoaded) {
-      // console.warn(`Cannot play sound '${key}': Audio system not ready or sound not loaded.`);
-      return;
+        // console.warn(`Cannot play sound '${key}': Audio system not ready or sound not loaded.`);
+        return;
     }
 
     const buffer = this.soundBuffers[key];
@@ -140,6 +151,8 @@ export class AudioManager {
 
       source.loop = loop;
       source.start(0);
+      
+      this.lastPlayedTimes.set(key, currentTime); // Update last played time
       // console.log(`Playing sound: ${key}`); // Optional: log playback
 
       // If looping, store the source node so we can stop it later
@@ -147,16 +160,16 @@ export class AudioManager {
         // Stop and remove any existing loop with the same key
         if (this.activeLoops.has(key)) {
           try {
-             this.activeLoops.get(key)?.stop();
+            this.activeLoops.get(key)?.stop();
           } catch (e) {
-             // Ignore errors if stop is called on an already stopped node
+            // Ignore errors if stop is called on an already stopped node
           }
         }
         this.activeLoops.set(key, source);
         // Remove from map when the sound naturally ends (though loop=true prevents this unless stopped)
         source.onended = () => {
           if (this.activeLoops.get(key) === source) { // Ensure it's the same node
-              this.activeLoops.delete(key);
+            this.activeLoops.delete(key);
           }
         };
       }

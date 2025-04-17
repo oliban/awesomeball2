@@ -182,15 +182,8 @@ export class UIManager {
     }
 
     private drawMatchOverMessage(score1: number, score2: number): void {
-        // Determine winner based on score passed in
-        const winner = score1 >= MATCH_POINT_LIMIT ? "Player 1" : "Player 2"; 
-        
-        this.ctx.fillStyle = C.WHITE;
-        this.ctx.font = '50px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText(`${winner} Wins Match!`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 - 30);
-        this.ctx.font = '30px Arial';
-        this.ctx.fillText(`Score: ${score1} - ${score2}`, C.SCREEN_WIDTH / 2, C.SCREEN_HEIGHT / 2 + 20);
+        // Content removed - GameManager.render() now handles the specific win message display
+        // including winner name (Nils/Harry) and restart prompt.
     }
 
     // TODO: Add drawTrophyScreen method
