@@ -41,6 +41,13 @@ export class GameManager {
     private activeRockets: Rocket[] = []; // Array to hold active rockets
     private activeArrows: Arrow[] = []; // Array to hold active arrows
 
+    // Goal Power-up State
+    private isPlayer1GoalEnlarged: boolean = false; 
+    private player1GoalEnlargeTimer: number = 0;
+    private isPlayer2GoalEnlarged: boolean = false;
+    private player2GoalEnlargeTimer: number = 0;
+    // TODO: Add state for Goal Shield later
+
     // Add state for double-tap detection
     private player1LastKickTime: number = 0;
     private player2LastKickTime: number = 0;
@@ -184,56 +191,76 @@ export class GameManager {
     }
 
     private checkGoal(): void {
-        // Only check for goals if playing
         if (this.currentState !== C.GameState.PLAYING) return;
 
-        // Check if ball is within goal height
-        if (this.ball.y > C.GOAL_Y_POS && this.ball.y < C.GROUND_Y) { 
-            let goalScored = false;
-            let scorer: number | null = null; // Track which player scored (1 or 2)
+        // --- Calculate Effective Goal Dimensions for Check --- 
+        const enlargeFactor = C.POWERUP_GOAL_ENLARGE_FACTOR;
 
-            // Goal for Player 2 (Ball crossed left goal line - Use LEFT_GOAL_X)
-            if (this.ball.x - this.ball.radius < C.LEFT_GOAL_X) { // Updated constant
-                console.log("GOAL P2!");
-                this.player2Score++;
-                goalScored = true;
-                scorer = 2;
-            } 
-            // Goal for Player 1 (Ball crossed right goal line - Check against RIGHT_GOAL_X + GOAL_WIDTH)
-            else if (this.ball.x + this.ball.radius > (C.RIGHT_GOAL_X + C.GOAL_WIDTH)) { // Updated check
-                console.log("GOAL P1!");
-                this.player1Score++;
-                goalScored = true;
-                scorer = 1;
+        // Player 1 Goal (Left)
+        const p1GoalWidth = this.isPlayer1GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p1GoalHeight = this.isPlayer1GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p1GoalX = C.LEFT_GOAL_X; // X position doesn't change
+        const p1GoalY = C.GROUND_Y - p1GoalHeight; // Y position adjusts based on height
+        const p1GoalLine = p1GoalX; // The line the ball must cross
+
+        // Player 2 Goal (Right)
+        const p2GoalWidth = this.isPlayer2GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p2GoalHeight = this.isPlayer2GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p2GoalX = C.RIGHT_GOAL_X - (p2GoalWidth - C.GOAL_WIDTH); // X pos adjusts based on width change
+        const p2GoalY = C.GROUND_Y - p2GoalHeight; // Y position adjusts based on height
+        const p2GoalLine = p2GoalX + p2GoalWidth; // The line the ball must cross
+        // ----------------------------------------------------
+
+        // Check if ball is vertically within either potential goal height
+        const ballInP1GoalHeight = this.ball.y > p1GoalY && this.ball.y < C.GROUND_Y;
+        const ballInP2GoalHeight = this.ball.y > p2GoalY && this.ball.y < C.GROUND_Y;
+
+        let goalScored = false;
+        let scorer: number | null = null;
+
+        // Goal for Player 2 (Ball crossed left goal line AND within P1 goal height)
+        if (ballInP1GoalHeight && this.ball.x - this.ball.radius < p1GoalLine) {
+            console.log("GOAL P2! (Goal Size Adjusted)");
+            this.player2Score++;
+            goalScored = true;
+            scorer = 2;
+        } 
+        // Goal for Player 1 (Ball crossed right goal line AND within P2 goal height)
+        else if (ballInP2GoalHeight && this.ball.x + this.ball.radius > p2GoalLine) {
+            console.log("GOAL P1! (Goal Size Adjusted)");
+            this.player1Score++;
+            goalScored = true;
+            scorer = 1;
+        }
+        
+        if (goalScored) {
+            // ... (rest of goal scoring logic remains the same) ...
+             // Play standard goal sound first (optional, could be removed if score announcement is enough)
+             if (scorer === 1) {
+                audioManager.playSound('PLAYER1_GOAL_1');
+            } else if (scorer === 2) {
+                audioManager.playSound('PLAYER2_GOAL_1');
             }
-            if (goalScored) {
-                // Play standard goal sound first (optional, could be removed if score announcement is enough)
-                if (scorer === 1) {
-                    audioManager.playSound('PLAYER1_GOAL_1');
-                } else if (scorer === 2) {
-                    audioManager.playSound('PLAYER2_GOAL_1');
-                }
 
-                this.particleSystem.emit('goal', this.ball.x, this.ball.y, 50); // Emit goal particles
-                
-                // Check for Match Over
-                if (this.player1Score >= MATCH_POINT_LIMIT || this.player2Score >= MATCH_POINT_LIMIT) {
-                    this.currentState = C.GameState.MATCH_OVER;
-                    this.matchOverTimer = 3.0; // Display match over message for 3 seconds
-                    // Play winner announcement sound
-                    if (this.player1Score >= MATCH_POINT_LIMIT) {
-                        audioManager.playSound('NILS_WINS');
-                    } else {
-                        audioManager.playSound('HARRY_WINS');
-                    }
+            this.particleSystem.emit('goal', this.ball.x, this.ball.y, 50); // Emit goal particles
+            
+            // Check for Match Over
+            if (this.player1Score >= MATCH_POINT_LIMIT || this.player2Score >= MATCH_POINT_LIMIT) {
+                this.currentState = C.GameState.MATCH_OVER;
+                this.matchOverTimer = 3.0; // Display match over message for 3 seconds
+                // Play winner announcement sound
+                 if (this.player1Score >= MATCH_POINT_LIMIT) {
+                    audioManager.playSound('NILS_WINS');
                 } else {
-                    // If not match over, set state to goal scored and announce score
-                    this.currentState = C.GameState.GOAL_SCORED;
-                    this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
-
-                    // Announce the score after a slight delay
-                    this.announceScore(); 
+                    audioManager.playSound('HARRY_WINS');
                 }
+            } else {
+                // If not match over, set state to goal scored and announce score
+                this.currentState = C.GameState.GOAL_SCORED;
+                this.goalMessageTimer = GOAL_RESET_DELAY; // Start delay timer
+
+                // Announce the score after a slight delay
+                this.announceScore(); 
             }
         }
     }
@@ -981,6 +1008,19 @@ export class GameManager {
                 console.log(`Player ${player === this.player1 ? 1 : 2} picked up Sword`);
                  // TODO: Add sound effect for sword pickup
                 break;
+            case PowerupType.GOAL_ENLARGE: // New case
+                // Enlarge the OPPONENT'S goal
+                if (player === this.player1) { // Player 1 picked it up
+                    this.isPlayer2GoalEnlarged = true;
+                    this.player2GoalEnlargeTimer = C.POWERUP_GOAL_ENLARGE_DURATION;
+                    console.log("Player 2 goal enlarged!");
+                } else { // Player 2 picked it up
+                    this.isPlayer1GoalEnlarged = true;
+                    this.player1GoalEnlargeTimer = C.POWERUP_GOAL_ENLARGE_DURATION;
+                    console.log("Player 1 goal enlarged!");
+                }
+                // TODO: Add sound effect for goal enlarge pickup
+                break;
             // Add other cases later
             default:
                 console.warn(`Unhandled powerup type: ${type}`);
@@ -989,6 +1029,23 @@ export class GameManager {
 
     private update(dt: number): void {
         this.inputHandler.update(); 
+
+        // --- Update Power-up Timers --- 
+        if (this.isPlayer1GoalEnlarged && this.player1GoalEnlargeTimer > 0) {
+            this.player1GoalEnlargeTimer -= dt;
+            if (this.player1GoalEnlargeTimer <= 0) {
+                this.isPlayer1GoalEnlarged = false;
+                console.log("Player 1 goal back to normal size.");
+            }
+        }
+         if (this.isPlayer2GoalEnlarged && this.player2GoalEnlargeTimer > 0) {
+            this.player2GoalEnlargeTimer -= dt;
+            if (this.player2GoalEnlargeTimer <= 0) {
+                this.isPlayer2GoalEnlarged = false;
+                console.log("Player 2 goal back to normal size.");
+            }
+        }
+        // TODO: Add timer updates for Goal Shield
 
         // --- Handle Match Over Reset Listener --- 
         // Separate listener for match over state to prevent conflict with game start
@@ -1393,6 +1450,7 @@ export class GameManager {
             p1RocketAmmo: this.player1.rocketAmmo,
             p1HasBow: this.player1.hasBow,
             p1ArrowAmmo: this.player1.arrowAmmo,
+            player1GoalEnlargeTimer: this.player1GoalEnlargeTimer, // Pass timer
             // Player 2 timers/state
             p2SpeedBoostTimer: this.player2['speedBoostTimer'],
             p2SuperJumpTimer: this.player2['superJumpTimer'],
@@ -1401,6 +1459,7 @@ export class GameManager {
             p2RocketAmmo: this.player2.rocketAmmo,
             p2HasBow: this.player2.hasBow,
             p2ArrowAmmo: this.player2.arrowAmmo,
+            player2GoalEnlargeTimer: this.player2GoalEnlargeTimer, // Pass timer
             // Global state
             ballIsFrozen: this.ball.isFrozen,
             ballFreezeTimer: this.ball['freezeTimer'],
@@ -1460,76 +1519,81 @@ export class GameManager {
     }
 
     private drawGoals(): void {
-        const goalColor = C.GOAL_COLOR; // Use constant
-        this.ctx.fillStyle = goalColor;
-        this.ctx.strokeStyle = C.BLACK; // Use constant
-        this.ctx.lineWidth = 2;
-
-        // Define goal structure using constants - ONLY CROSSBARS for drawing initially
-        const crossbars = [
-            // Left Goal Crossbar
-            { x: C.LEFT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
-            // Right Goal Crossbar
-            { x: C.RIGHT_GOAL_X, y: C.GOAL_Y_POS - C.GOAL_POST_THICKNESS, width: C.GOAL_WIDTH, height: C.GOAL_POST_THICKNESS },
-        ];
-
-        // Draw Nets First (so posts are drawn over them)
-        this.ctx.strokeStyle = 'rgba(240, 240, 240, 0.8)'; // Lighter grey/whiter net
-        this.ctx.lineWidth = 1; // Thinner lines for net
-        const netSpacing = 10;
-
-        // Left Goal Net
-        const leftNetTop = C.GOAL_Y_POS;
-        const leftNetBottom = C.GROUND_Y;
-        for (let y = leftNetTop; y < leftNetBottom; y += netSpacing) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(C.LEFT_GOAL_X, y);
-            this.ctx.lineTo(C.LEFT_GOAL_X + C.GOAL_WIDTH, y);
-            this.ctx.stroke();
-        }
-        for (let x = C.LEFT_GOAL_X; x < C.LEFT_GOAL_X + C.GOAL_WIDTH; x += netSpacing) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, leftNetTop);
-            this.ctx.lineTo(x, leftNetBottom);
-            this.ctx.stroke();
-        }
-
-        // Right Goal Net
-        const rightNetTop = C.GOAL_Y_POS;
-        const rightNetBottom = C.GROUND_Y;
-        for (let y = rightNetTop; y < rightNetBottom; y += netSpacing) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(C.RIGHT_GOAL_X, y);
-            this.ctx.lineTo(C.RIGHT_GOAL_X + C.GOAL_WIDTH, y);
-            this.ctx.stroke();
-        }
-        for (let x = C.RIGHT_GOAL_X; x < C.RIGHT_GOAL_X + C.GOAL_WIDTH; x += netSpacing) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, rightNetTop);
-            this.ctx.lineTo(x, rightNetBottom);
-            this.ctx.stroke();
-        }
-
-        // Draw Crossbars
+        const goalColor = C.GOAL_COLOR;
         this.ctx.fillStyle = goalColor;
         this.ctx.strokeStyle = C.BLACK;
         this.ctx.lineWidth = 2;
-        for (const rect of crossbars) {
-            this.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-            this.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+        // --- Calculate Effective Goal Dimensions --- 
+        const enlargeFactor = C.POWERUP_GOAL_ENLARGE_FACTOR;
+
+        // Player 1 Goal (Left)
+        const p1GoalWidth = this.isPlayer1GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p1GoalHeight = this.isPlayer1GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p1GoalX = C.LEFT_GOAL_X; // X position doesn't change (anchored left)
+        const p1GoalY = C.GROUND_Y - p1GoalHeight; // Y position adjusts based on height
+
+        // Player 2 Goal (Right)
+        const p2GoalWidth = this.isPlayer2GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p2GoalHeight = this.isPlayer2GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p2GoalX = C.RIGHT_GOAL_X - (p2GoalWidth - C.GOAL_WIDTH); // X pos adjusts based on width change
+        const p2GoalY = C.GROUND_Y - p2GoalHeight; // Y position adjusts based on height
+        // -----------------------------------------
+
+        // Draw Nets First (adjust dimensions)
+        this.ctx.strokeStyle = 'rgba(240, 240, 240, 0.8)';
+        this.ctx.lineWidth = 1;
+        const netSpacing = 10;
+
+        // Left Goal Net (using p1 effective dimensions)
+        for (let y = p1GoalY; y < C.GROUND_Y; y += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(p1GoalX, y);
+            this.ctx.lineTo(p1GoalX + p1GoalWidth, y);
+            this.ctx.stroke();
+        }
+        for (let x = p1GoalX; x < p1GoalX + p1GoalWidth; x += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, p1GoalY);
+            this.ctx.lineTo(x, C.GROUND_Y);
+            this.ctx.stroke();
         }
 
-        // Draw Back Poles (Vertical posts at the goal line)
-        const backPoles = [
-            // Left Goal Back Pole
-            { x: C.LEFT_GOAL_X, y: C.GOAL_Y_POS, width: C.GOAL_POST_THICKNESS, height: C.GOAL_HEIGHT },
-            // Right Goal Back Pole
-            { x: C.SCREEN_WIDTH - C.GOAL_POST_THICKNESS, y: C.GOAL_Y_POS, width: C.GOAL_POST_THICKNESS, height: C.GOAL_HEIGHT },
-        ];
-        for (const pole of backPoles) {
-            this.ctx.fillRect(pole.x, pole.y, pole.width, pole.height);
-            this.ctx.strokeRect(pole.x, pole.y, pole.width, pole.height);
+        // Right Goal Net (using p2 effective dimensions)
+        for (let y = p2GoalY; y < C.GROUND_Y; y += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(p2GoalX, y);
+            this.ctx.lineTo(p2GoalX + p2GoalWidth, y);
+            this.ctx.stroke();
         }
+        for (let x = p2GoalX; x < p2GoalX + p2GoalWidth; x += netSpacing) {
+            this.ctx.beginPath();
+            this.ctx.moveTo(x, p2GoalY);
+            this.ctx.lineTo(x, C.GROUND_Y);
+            this.ctx.stroke();
+        }
+
+        // Draw Crossbars (using effective dimensions)
+        this.ctx.fillStyle = goalColor;
+        this.ctx.strokeStyle = C.BLACK;
+        this.ctx.lineWidth = 2;
+        // Left Crossbar
+        const p1CrossbarY = p1GoalY - C.GOAL_POST_THICKNESS; // Adjust Y based on effective height
+        this.ctx.fillRect(p1GoalX, p1CrossbarY, p1GoalWidth, C.GOAL_POST_THICKNESS);
+        this.ctx.strokeRect(p1GoalX, p1CrossbarY, p1GoalWidth, C.GOAL_POST_THICKNESS);
+        // Right Crossbar
+        const p2CrossbarY = p2GoalY - C.GOAL_POST_THICKNESS; // Adjust Y based on effective height
+        this.ctx.fillRect(p2GoalX, p2CrossbarY, p2GoalWidth, C.GOAL_POST_THICKNESS);
+        this.ctx.strokeRect(p2GoalX, p2CrossbarY, p2GoalWidth, C.GOAL_POST_THICKNESS);
+
+        // Draw Back Poles (using effective dimensions)
+        // Left Back Pole
+        this.ctx.fillRect(p1GoalX, p1GoalY, C.GOAL_POST_THICKNESS, p1GoalHeight);
+        this.ctx.strokeRect(p1GoalX, p1GoalY, C.GOAL_POST_THICKNESS, p1GoalHeight);
+        // Right Back Pole (adjust X position based on effective width)
+        const p2BackPoleX = p2GoalX + p2GoalWidth - C.GOAL_POST_THICKNESS;
+        this.ctx.fillRect(p2BackPoleX, p2GoalY, C.GOAL_POST_THICKNESS, p2GoalHeight);
+        this.ctx.strokeRect(p2BackPoleX, p2GoalY, C.GOAL_POST_THICKNESS, p2GoalHeight);
     }
 
     private createExplosion(x: number, y: number): void {

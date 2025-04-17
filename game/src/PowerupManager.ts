@@ -20,7 +20,7 @@ export class PowerupManager {
     }
 
     private spawnPowerup(): void {
-        // Choose a random type (for now, from the basic list)
+        // Choose a random type
         const availableTypes = [
             PowerupType.SPEED_BOOST, 
             PowerupType.BIG_PLAYER, 
@@ -28,7 +28,8 @@ export class PowerupManager {
             PowerupType.BALL_FREEZE,
             PowerupType.ROCKET_LAUNCHER,
             PowerupType.BOW,
-            PowerupType.SWORD
+            PowerupType.SWORD,
+            PowerupType.GOAL_ENLARGE
         ];
         const randomIndex = Math.floor(Math.random() * availableTypes.length);
         const type = availableTypes[randomIndex];

@@ -9,6 +9,7 @@ export enum PowerupType {
     ROCKET_LAUNCHER = 'ROCKET_LAUNCHER',
     BOW = 'BOW',
     SWORD = 'SWORD',
+    GOAL_ENLARGE = 'GOAL_ENLARGE',
     // Add more later: GOAL_SHIELD, SHRINK_OPPONENT, etc.
 }
 
@@ -233,6 +234,44 @@ export class Powerup {
                 ctx.lineTo(-boxW * 0.08, -boxH * 0.4);
                 ctx.closePath();
                 ctx.fill();
+                ctx.stroke();
+                break;
+            case PowerupType.GOAL_ENLARGE:
+                ctx.fillStyle = '#FFA500'; // Orange
+                ctx.strokeStyle = C.BLACK;
+                ctx.lineWidth = 2;
+                // Draw outward arrows from center
+                // Top arrow
+                ctx.beginPath();
+                ctx.moveTo(0, -boxH * 0.1);
+                ctx.lineTo(0, -boxH * 0.4);
+                ctx.moveTo(-boxW * 0.15, -boxH * 0.3);
+                ctx.lineTo(0, -boxH * 0.4);
+                ctx.lineTo(boxW * 0.15, -boxH * 0.3);
+                ctx.stroke();
+                // Bottom arrow
+                ctx.beginPath();
+                ctx.moveTo(0, boxH * 0.1);
+                ctx.lineTo(0, boxH * 0.4);
+                ctx.moveTo(-boxW * 0.15, boxH * 0.3);
+                ctx.lineTo(0, boxH * 0.4);
+                ctx.lineTo(boxW * 0.15, boxH * 0.3);
+                ctx.stroke();
+                // Left arrow
+                 ctx.beginPath();
+                ctx.moveTo(-boxW * 0.1, 0);
+                ctx.lineTo(-boxW * 0.4, 0);
+                ctx.moveTo(-boxW * 0.3, -boxH * 0.15);
+                ctx.lineTo(-boxW * 0.4, 0);
+                ctx.lineTo(-boxW * 0.3, boxH * 0.15);
+                ctx.stroke();
+                // Right arrow
+                 ctx.beginPath();
+                ctx.moveTo(boxW * 0.1, 0);
+                ctx.lineTo(boxW * 0.4, 0);
+                ctx.moveTo(boxW * 0.3, -boxH * 0.15);
+                ctx.lineTo(boxW * 0.4, 0);
+                ctx.lineTo(boxW * 0.3, boxH * 0.15);
                 ctx.stroke();
                 break;
             default:

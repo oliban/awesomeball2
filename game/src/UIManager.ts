@@ -13,6 +13,7 @@ export interface UIGameState {
     p1RocketAmmo?: number;
     p1HasBow?: boolean;
     p1ArrowAmmo?: number;
+    player1GoalEnlargeTimer?: number; // Add P1 Goal Enlarge Timer
     // Player 2 Status
     p2SpeedBoostTimer?: number;
     p2SuperJumpTimer?: number;
@@ -21,6 +22,7 @@ export interface UIGameState {
     p2RocketAmmo?: number;
     p2HasBow?: boolean;
     p2ArrowAmmo?: number;
+    player2GoalEnlargeTimer?: number; // Add P2 Goal Enlarge Timer
     // Global Status
     ballIsFrozen?: boolean;
     ballFreezeTimer?: number; // Maybe display time remaining?
@@ -122,6 +124,12 @@ export class UIManager {
             this.ctx.fillText(`BIG! ${gameState.p1BigPlayerTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
             p1StatusY += fontSize + 2;
         }
+        if (gameState.player1GoalEnlargeTimer && gameState.player1GoalEnlargeTimer > 0) {
+            this.ctx.fillStyle = '#FFA500'; // Orange for goal enlarge
+            this.ctx.fillText(`GOAL ENLARGED: ${gameState.player1GoalEnlargeTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
+            this.ctx.fillStyle = C.WHITE; // Reset color
+            p1StatusY += fontSize + 2;
+        }
         if (gameState.p1HasRocketLauncher && gameState.p1RocketAmmo !== undefined && gameState.p1RocketAmmo > 0) {
             this.ctx.fillStyle = '#FF4500'; // Orange for rockets
             this.ctx.fillText(`ROCKETS: ${gameState.p1RocketAmmo}`, p1StatusX, p1StatusY);
@@ -148,6 +156,12 @@ export class UIManager {
         }
         if (gameState.p2BigPlayerTimer && gameState.p2BigPlayerTimer > 0) {
             this.ctx.fillText(`BIG! ${gameState.p2BigPlayerTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            p2StatusY += fontSize + 2;
+        }
+        if (gameState.player2GoalEnlargeTimer && gameState.player2GoalEnlargeTimer > 0) {
+            this.ctx.fillStyle = '#FFA500'; // Orange for goal enlarge
+            this.ctx.fillText(`GOAL ENLARGED: ${gameState.player2GoalEnlargeTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
+            this.ctx.fillStyle = C.WHITE; // Reset color
             p2StatusY += fontSize + 2;
         }
         if (gameState.p2HasRocketLauncher && gameState.p2RocketAmmo !== undefined && gameState.p2RocketAmmo > 0) {
