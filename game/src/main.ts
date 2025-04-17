@@ -5,8 +5,11 @@ import { audioManager } from './AudioManager'
 
 document.addEventListener('DOMContentLoaded', () => {
     const canvas = document.getElementById('gameCanvas') as HTMLCanvasElement;
-    if (!canvas) {
-        console.error("Canvas element not found!");
+    // const welcomeScreen = document.getElementById('welcome-screen'); // Removed
+    // const gameContainer = document.getElementById('game-container'); // Removed
+
+    if (!canvas /* || !welcomeScreen || !gameContainer */) { // Adjusted condition
+        console.error("Canvas element not found!"); // Simplified error message
         return;
     }
 
@@ -28,6 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error("Sound loading failed:", error);
     });
 
+    // --- Game initialization moved back to main scope --- 
     const gameManager = new GameManager(ctx);
     gameManager.start();
+
+    // --- Removed key press handler --- 
+    // const handleKeyPress = ... 
+    // document.removeEventListener('keydown', handleKeyPress);
+    // document.addEventListener('keydown', handleKeyPress);
 });

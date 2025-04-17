@@ -5,12 +5,94 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Awesome Ball 2</title>
-    <!-- Link to CSS if you have one, e.g., <link rel="stylesheet" href="/style.css"> -->
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        margin: 0;
+        background-color: #f0f0f0;
+        font-family: sans-serif;
+        min-height: 100vh;
+        box-sizing: border-box;
+      }
+      header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 2em; /* Main title larger */
+      }
+      header p {
+        margin: 5px 0 0 0;
+        font-size: 1em; /* Slogan */
+        color: #555;
+      }
+      #main-content {
+        display: flex; /* Arrange controls and game side-by-side */
+        justify-content: center; /* Center items horizontally */
+        align-items: center; /* Align items vertically in the middle */
+        width: 100%;
+        max-width: 1200px; /* Limit max width for larger screens */
+      }
+      .controls-column {
+        flex: 1; /* Allow columns to take up space */
+        padding: 0 20px; /* Space around control text */
+        text-align: center;
+      }
+      .controls-column h3 {
+          margin-bottom: 10px;
+          font-size: 1.1em;
+      }
+       .controls-column p {
+          margin: 5px 0; /* Spacing for control lines */
+          font-size: 0.9em;
+       }
+      #game-container {
+        line-height: 0; /* Prevent extra space below canvas */
+        /* Canvas container does not need flex: 1 if we want it fixed width */
+      }
+      canvas {
+        border: 1px solid #ccc;
+        display: block; /* Remove any potential inline spacing */
+      }
+    </style>
   </head>
   <body>
-    <h1>Awesome Ball 2</h1>
-    <button id="testSoundButton">Test Kick Sound</button>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <header>
+      <h1>Awesomeball 2</h1>
+      <p>The epic battle between the two brothers Nils and Harry</p>
+    </header>
+
+    <div id="main-content">
+      <!-- Left Controls Column -->
+      <div class="controls-column" id="player1-controls">
+        <h3>Nils (Blue)</h3>
+        <p><strong>Jump:</strong> W</p>
+        <p><strong>Kick/Special:</strong> S</p>
+        <p><em>(Double-tap S for Bicycle Kick)</em></p>
+        <p><strong>Left:</strong> A</p>
+        <p><strong>Right:</strong> D</p>
+      </div>
+
+      <!-- Game Canvas Container -->
+      <div id="game-container">
+          <canvas id="gameCanvas" width="800" height="600"></canvas>
+      </div>
+
+      <!-- Right Controls Column -->
+      <div class="controls-column" id="player2-controls">
+        <h3>Harry (Red)</h3>
+        <p><strong>Jump:</strong> ArrowUp</p>
+        <p><strong>Kick/Special:</strong> ArrowDown</p>
+        <p><em>(Double-tap ↓ for Bicycle Kick)</em></p>
+        <p><strong>Left:</strong> ArrowLeft</p>
+        <p><strong>Right:</strong> ArrowRight</p>
+      </div>
+    </div>
+
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
