@@ -30,7 +30,7 @@ export class Ball {
 
     update(dt: number): void {
         // Log velocity at the START of the update, AFTER collisions/forces may have been applied
-        console.log(`[Ball] Update START: vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`);
+        // console.log(`[Ball] Update START: vx=${this.vx.toFixed(1)}, vy=${this.vy.toFixed(1)}`);
         
         // Bail out early if frozen
         // console.log(`Ball update check: isFrozen=${this.isFrozen}, freezeTimer=${this.freezeTimer?.toFixed(2)}`); // DEBUG LOG

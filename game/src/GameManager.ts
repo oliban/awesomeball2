@@ -780,15 +780,27 @@ export class GameManager {
                 }
 
                 if (hitDetected) {
-                    // Apply effect (e.g., pushback, maybe different effect than arrow?)
-                    const pushAngle = Math.atan2(targetPlayer.y - swinger.y, targetPlayer.x - swinger.x);
-                    targetPlayer.vx = Math.cos(pushAngle) * C.SWORD_HIT_FORCE; // Use a new constant
-                    targetPlayer.vy = Math.sin(pushAngle) * C.SWORD_HIT_FORCE - 150; // Add upward force
+                    // Apply pushback effect
+                    const pushDirectionX = Math.sign(targetPlayer.x - swinger.x) || 1; // Push away horizontally
+                    const upwardForce = -300; // How much to bounce upwards (negative is up)
+
+                    targetPlayer.vx = pushDirectionX * C.SWORD_HIT_FORCE; // Use constant for horizontal force
+                    targetPlayer.vy = upwardForce; // Apply upward bounce
+                    
+                    // Use pushback state to prevent immediate input
+                    targetPlayer.isBeingPushedBack = true;
+                    targetPlayer.pushbackTimer = C.PUSHBACK_DURATION; // Use standard duration for now
+                    
+                    // Reset jumping/platform states
+                    targetPlayer.isJumping = true; 
+                    targetPlayer.onOtherPlayerHead = false;
+                    targetPlayer.onLeftCrossbar = false;
+                    targetPlayer.onRightCrossbar = false;
+                    
                     targetPlayer.startTumble(); // Make them tumble
-                    // TODO: Play sword hit sound
-                    audioManager.playSound('SWORD_HIT_PLAYER');
-                    // Potentially stop sword swing early?
-                    // swinger.isSwingingSword = false; 
+                    
+                    // Play the correct sword hit sound
+                    audioManager.playSound('SWORD_HIT'); 
                 }
             }
 
@@ -939,6 +951,10 @@ export class GameManager {
                     player.hasRocketLauncher = false;
                     player.rocketAmmo = 0;
                 }
+                // Also remove sword if picking up bow
+                if (player.isSword) {
+                    player.isSword = false;
+                }
                 // Check if player already has bow
                 const hadBowAlready = player.hasBow;
                 player.hasBow = true;
@@ -950,6 +966,20 @@ export class GameManager {
                 player.aimAngle = 0; // Reset aim angle on pickup
                 console.log(`Player ${player === this.player1 ? 1 : 2} ${hadBowAlready ? 'added arrows to' : 'picked up'} Bow (Ammo: ${player.arrowAmmo})`);
                 // TODO: Add sound effect for bow pickup
+                break;
+            case PowerupType.SWORD: // New case for Sword
+                // Remove other weapons when picking up sword
+                if (player.hasRocketLauncher) {
+                    player.hasRocketLauncher = false;
+                    player.rocketAmmo = 0;
+                }
+                if (player.hasBow) {
+                    player.hasBow = false;
+                    player.arrowAmmo = 0;
+                }
+                player.isSword = true; // Equip sword
+                console.log(`Player ${player === this.player1 ? 1 : 2} picked up Sword`);
+                 // TODO: Add sound effect for sword pickup
                 break;
             // Add other cases later
             default:
@@ -1029,51 +1059,49 @@ export class GameManager {
                     if (this.player1LastKickTime > 0 && timeSinceLastKick < DOUBLE_TAP_THRESHOLD_MS) {
                         // Double tap detected! Only perform bicycle kick actions.
                         console.log("Player 1 Bicycle Kick!");
-                        // Reset standard kick state first
-                        this.player1.isKicking = false;
+                        this.player1.isKicking = false; // Ensure standard kick is false
                         this.player1.kickTimer = 0;
                         this.player1.startBicycleKick(); // Directly start bicycle kick
-                        // Reset last kick time to prevent immediate re-trigger after double tap
-                        this.player1LastKickTime = 0;
+                        this.player1LastKickTime = 0; // Prevent immediate re-trigger
                     } else {
                         // Single tap (or first tap after reset/start)
-                        // Only perform single tap actions here.
-                        this.player1.startKick();
+                        // --- Prioritize Weapon Actions --- 
+                        let actionTaken = false;
                         if (this.player1.isSword) {
                             this.player1.startSwordSwing();
+                            actionTaken = true; // Sword swing takes priority
                         }
-                        if (this.player1.hasRocketLauncher && !this.player1.isItching) {
+                        if (!actionTaken && this.player1.hasRocketLauncher && !this.player1.isItching) {
                             const newRocket = this.player1.fireRocket(this.particleSystem);
                             if (newRocket) this.activeRockets.push(newRocket);
+                            actionTaken = true; // Rocket fired
                         }
-                        if (this.player1.hasBow && !this.player1.isItching) {
-                            // Add arrow firing logic
+                        if (!actionTaken && this.player1.hasBow && !this.player1.isItching) {
                             if (this.player1.arrowAmmo > 0) {
                                 // --- Fire Arrow Logic ---
                                 const arrowSpeed = C.ARROW_SPEED;
-                                const worldAimAngle = -this.player1.aimAngle; // Negate sway angle
-                                const effectiveFireAngle = this.player1.facingDirection === 1 
-                                    ? worldAimAngle 
-                                    : Math.PI - worldAimAngle; 
+                                const worldAimAngle = -this.player1.aimAngle;
+                                const effectiveFireAngle = this.player1.facingDirection === 1 ? worldAimAngle : Math.PI - worldAimAngle;
                                 const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
-                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed; // Y is flipped in canvas
-                                const startX = this.player1.x; // Use player base x
-                                const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5; // Approx shoulder height
+                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed;
+                                const startX = this.player1.x;
+                                const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5;
                                 const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem);
                                 this.activeArrows.push(newArrow);
-                                this.player1.arrowAmmo--; 
+                                this.player1.arrowAmmo--;
                                 if (this.player1.arrowAmmo <= 0) {
                                     this.player1.hasBow = false;
-                                    console.log("Player 1 ran out of arrows, bow removed.");
                                 }
-                                // Play arrow sound if available
-                                audioManager.playSound('KICK_1'); // Placeholder sound
-                            } else {
-                                console.log("Player 1 out of arrows!");
-                            }
+                                audioManager.playSound('KICK_1'); // Placeholder
+                            } else { console.log("Player 1 out of arrows!"); }
+                            actionTaken = true; // Arrow fired or attempted
+                        }
+                        // --- Fallback to Standard Kick --- 
+                        if (!actionTaken) {
+                            this.player1.startKick();
                         }
                         
-                        // Always record the time of this kick (single or first tap)
+                        // Always record the time of this kick attempt
                         this.player1LastKickTime = currentTime;
                     }
                 }
@@ -1104,51 +1132,49 @@ export class GameManager {
                     if (this.player2LastKickTime > 0 && timeSinceLastKick < DOUBLE_TAP_THRESHOLD_MS) {
                         // Double tap detected! Only perform bicycle kick actions.
                         console.log("Player 2 Bicycle Kick!");
-                        // Reset standard kick state first
-                        this.player2.isKicking = false;
+                        this.player2.isKicking = false; // Ensure standard kick is false
                         this.player2.kickTimer = 0;
                         this.player2.startBicycleKick(); // Directly start bicycle kick
-                        // Reset last kick time to prevent immediate re-trigger after double tap
-                        this.player2LastKickTime = 0;
+                        this.player2LastKickTime = 0; // Prevent immediate re-trigger
                     } else {
                         // Single tap (or first tap after reset/start)
-                        // Only perform single tap actions here.
-                        this.player2.startKick();
+                        // --- Prioritize Weapon Actions --- 
+                        let actionTaken = false;
                          if (this.player2.isSword) {
                             this.player2.startSwordSwing();
+                            actionTaken = true; // Sword swing takes priority
                         }
-                        if (this.player2.hasRocketLauncher && !this.player2.isItching) {
+                        if (!actionTaken && this.player2.hasRocketLauncher && !this.player2.isItching) {
                             const newRocket = this.player2.fireRocket(this.particleSystem);
                             if (newRocket) this.activeRockets.push(newRocket);
+                             actionTaken = true; // Rocket fired
                         }
-                        if (this.player2.hasBow && !this.player2.isItching) {
-                            // Add arrow firing logic
+                        if (!actionTaken && this.player2.hasBow && !this.player2.isItching) {
                             if (this.player2.arrowAmmo > 0) {
                                 // --- Fire Arrow Logic ---
                                 const arrowSpeed = C.ARROW_SPEED;
-                                const worldAimAngle = -this.player2.aimAngle; // Negate sway angle
-                                const effectiveFireAngle = this.player2.facingDirection === 1 
-                                    ? worldAimAngle 
-                                    : Math.PI - worldAimAngle; 
+                                const worldAimAngle = -this.player2.aimAngle;
+                                const effectiveFireAngle = this.player2.facingDirection === 1 ? worldAimAngle : Math.PI - worldAimAngle;
                                 const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
-                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed; // Y is flipped in canvas
-                                const startX = this.player2.x; // Use player base x
-                                const startY = this.player2.y - this.player2.legLength - this.player2.torsoLength * 0.5; // Approx shoulder height
+                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed;
+                                const startX = this.player2.x;
+                                const startY = this.player2.y - this.player2.legLength - this.player2.torsoLength * 0.5;
                                 const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem);
                                 this.activeArrows.push(newArrow);
-                                this.player2.arrowAmmo--; 
+                                this.player2.arrowAmmo--;
                                 if (this.player2.arrowAmmo <= 0) {
                                     this.player2.hasBow = false;
-                                    console.log("Player 2 ran out of arrows, bow removed.");
                                 }
-                                // Play arrow sound if available
-                                audioManager.playSound('KICK_1'); // Placeholder sound
-                            } else {
-                                console.log("Player 2 out of arrows!");
-                            }
+                                audioManager.playSound('KICK_1'); // Placeholder
+                            } else { console.log("Player 2 out of arrows!"); }
+                             actionTaken = true; // Arrow fired or attempted
+                        }
+                        // --- Fallback to Standard Kick --- 
+                        if (!actionTaken) {
+                             this.player2.startKick();
                         }
 
-                        // Always record the time of this kick (single or first tap)
+                        // Always record the time of this kick attempt
                         this.player2LastKickTime = currentTime;
                     }
                 }

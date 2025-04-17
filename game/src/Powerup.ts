@@ -8,6 +8,7 @@ export enum PowerupType {
     BALL_FREEZE = 'BALL_FREEZE',
     ROCKET_LAUNCHER = 'ROCKET_LAUNCHER',
     BOW = 'BOW',
+    SWORD = 'SWORD',
     // Add more later: GOAL_SHIELD, SHRINK_OPPONENT, etc.
 }
 
@@ -212,6 +213,26 @@ export class Powerup {
                 ctx.beginPath();
                 ctx.moveTo(0, -boxH * 0.35);
                 ctx.lineTo(0, boxH * 0.35);
+                ctx.stroke();
+                break;
+            case PowerupType.SWORD:
+                ctx.fillStyle = '#A9A9A9'; // DarkGray for blade
+                ctx.strokeStyle = C.BLACK;
+                ctx.lineWidth = 2;
+                // Simple Sword Shape (handle and blade)
+                // Handle
+                ctx.fillRect(-boxW * 0.08, boxH * 0.1, boxW * 0.16, boxH * 0.3); 
+                // Guard
+                ctx.fillRect(-boxW * 0.25, boxH * 0.05, boxW * 0.5, boxH * 0.1); 
+                // Blade
+                ctx.beginPath();
+                ctx.moveTo(-boxW * 0.08, boxH * 0.05);
+                ctx.lineTo(boxW * 0.08, boxH * 0.05);
+                ctx.lineTo(boxW * 0.08, -boxH * 0.4);
+                ctx.lineTo(0, -boxH * 0.5); // Pointy tip
+                ctx.lineTo(-boxW * 0.08, -boxH * 0.4);
+                ctx.closePath();
+                ctx.fill();
                 ctx.stroke();
                 break;
             default:
