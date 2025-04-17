@@ -97,7 +97,7 @@ export class GameManager {
         );
 
         // DEBUG: Spawn initial Rocket Launcher
-        this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
+        // this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
     }
 
     private resetPositions(): void {
@@ -278,25 +278,63 @@ export class GameManager {
 
         // --- Player-Ball Collisions ---
         for (const player of players) {
-            // --- Player-Ball Kick Collision ---
-            // --- DEBUG: Inspect Player Object --- 
-            console.log(`[handleCollisions] Checking player:`, player);
-            console.log(`  typeof player:`, typeof player);
-            if (player && player.constructor) {
-                 console.log(`  player.constructor.name:`, player.constructor.name);
-            }
-            console.log(`  player.isKicking:`, player?.isKicking);
-            console.log(`  facingDirection:`, player?.facingDirection);
-            console.log(`  player instanceof Player:`, player instanceof Player);
-            console.log(`  typeof player.getKickImpactPoint:`, typeof (player as any).getKickImpactPoint);
-            console.log(`  player.getKickImpactPoint:`, (player as any).getKickImpactPoint);
-            console.log(`  Is getKickImpactPoint on Player.prototype?`, Player.prototype.hasOwnProperty('getKickImpactPoint'));
             // --- Add Prototype Check --- 
             // --- END DEBUG --- 
 
+            // Check for bicycle kick collision first
+            if (player.isBicycleKicking && !kickAppliedThisFrame) {
+                // Use the dedicated bicycle kick impact point method
+                const kickPoint = player.getBicycleKickImpactPoint();
+                if (kickPoint) {
+                    const dx = this.ball.x - kickPoint.x;
+                    const dy = this.ball.y - kickPoint.y;
+                    const distSq = dx * dx + dy * dy;
+                    const kickRadius = this.ball.radius + 40; // Increased radius for bicycle kicks
+                    const kickRadiusSq = kickRadius * kickRadius;
+
+                    console.log(`[Bicycle Kick] Check: dist=${Math.sqrt(distSq).toFixed(1)}, radius=${Math.sqrt(kickRadiusSq).toFixed(1)}`);
+
+                    // Check if the kick point is close enough to the ball
+                    if (distSq < kickRadiusSq) {
+                        console.log(`BICYCLE KICK CONNECT! Player: ${player === this.player1 ? 1:2}, KickPoint: (${kickPoint.x.toFixed(1)}, ${kickPoint.y.toFixed(1)}), Ball: (${this.ball.x.toFixed(1)}, ${this.ball.y.toFixed(1)})`);
+                        audioManager.playSound('KICK_1'); // Play kick sound on connect
+
+                        // --- Bicycle Kick Force --- 
+                        console.log("Applying Bicycle Kick force!");
+                        const bicycleKickPowerMultiplier = 2.5; // Increase power for more impact
+                        const bicycleKickUpwardFactor = 1.8; // More upward force
+                        
+                        const kickVx = player.facingDirection * C.BASE_KICK_FORCE_X * bicycleKickPowerMultiplier * 0.7;
+                        const kickVy = C.BASE_KICK_FORCE_Y * bicycleKickPowerMultiplier * bicycleKickUpwardFactor;
+                        
+                        // Apply the force with a little randomness
+                        const originalAngle = Math.atan2(kickVy, kickVx);
+                        const originalMagnitude = Math.sqrt(kickVx * kickVx + kickVy * kickVy);
+                        const maxRandomAngleOffset = Math.PI / 18; // +/- 10 degrees
+                        const randomOffset = (Math.random() * 2 - 1) * maxRandomAngleOffset;
+                        const finalAngle = originalAngle + randomOffset;
+                        const randomizedKickVx = Math.cos(finalAngle) * originalMagnitude;
+                        const randomizedKickVy = Math.sin(finalAngle) * originalMagnitude;
+
+                        // Apply the final force
+                        this.ball.applyKick(randomizedKickVx, randomizedKickVy);
+                        
+                        // --- Emit Particles ---
+                        this.particleSystem.emit('kick', kickPoint.x, kickPoint.y, 15, { 
+                            kickDirection: player.facingDirection, 
+                            isBicycle: true
+                        });
+
+                        kickAppliedThisFrame = true; 
+                        continue; // Skip other ball collisions for this player
+                    }
+                }
+            }
+
+            // Check regular kick collision
             if (player.isKicking && !kickAppliedThisFrame) {
-                // Use our fallback implementation instead of direct method call
-                const kickPoint = getKickImpactPointFallback(player);
+                // Use the Player class's own method now
+                const kickPoint = player.getKickImpactPoint(); 
                 if (kickPoint) {
                     const dx = this.ball.x - kickPoint.x;
                     const dy = this.ball.y - kickPoint.y;
@@ -937,7 +975,30 @@ export class GameManager {
                             if (newRocket) this.activeRockets.push(newRocket);
                         }
                         if (this.player1.hasBow && !this.player1.isItching) {
-                            // ... (bow firing logic)
+                            // Add arrow firing logic
+                            if (this.player1.arrowAmmo > 0) {
+                                // --- Fire Arrow Logic ---
+                                const arrowSpeed = C.ARROW_SPEED;
+                                const worldAimAngle = -this.player1.aimAngle; // Negate sway angle
+                                const effectiveFireAngle = this.player1.facingDirection === 1 
+                                    ? worldAimAngle 
+                                    : Math.PI - worldAimAngle; 
+                                const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
+                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed; // Y is flipped in canvas
+                                const startX = this.player1.x; // Use player base x
+                                const startY = this.player1.y - this.player1.legLength - this.player1.torsoLength * 0.5; // Approx shoulder height
+                                const newArrow = new Arrow(startX, startY, vx, vy, this.player1, this.particleSystem);
+                                this.activeArrows.push(newArrow);
+                                this.player1.arrowAmmo--; 
+                                if (this.player1.arrowAmmo <= 0) {
+                                    this.player1.hasBow = false;
+                                    console.log("Player 1 ran out of arrows, bow removed.");
+                                }
+                                // Play arrow sound if available
+                                audioManager.playSound('KICK_1'); // Placeholder sound
+                            } else {
+                                console.log("Player 1 out of arrows!");
+                            }
                         }
                         
                         // Always record the time of this kick (single or first tap)
@@ -989,7 +1050,30 @@ export class GameManager {
                             if (newRocket) this.activeRockets.push(newRocket);
                         }
                         if (this.player2.hasBow && !this.player2.isItching) {
-                            // ... (bow firing logic)
+                            // Add arrow firing logic
+                            if (this.player2.arrowAmmo > 0) {
+                                // --- Fire Arrow Logic ---
+                                const arrowSpeed = C.ARROW_SPEED;
+                                const worldAimAngle = -this.player2.aimAngle; // Negate sway angle
+                                const effectiveFireAngle = this.player2.facingDirection === 1 
+                                    ? worldAimAngle 
+                                    : Math.PI - worldAimAngle; 
+                                const vx = Math.cos(effectiveFireAngle) * arrowSpeed;
+                                const vy = -Math.sin(effectiveFireAngle) * arrowSpeed; // Y is flipped in canvas
+                                const startX = this.player2.x; // Use player base x
+                                const startY = this.player2.y - this.player2.legLength - this.player2.torsoLength * 0.5; // Approx shoulder height
+                                const newArrow = new Arrow(startX, startY, vx, vy, this.player2, this.particleSystem);
+                                this.activeArrows.push(newArrow);
+                                this.player2.arrowAmmo--; 
+                                if (this.player2.arrowAmmo <= 0) {
+                                    this.player2.hasBow = false;
+                                    console.log("Player 2 ran out of arrows, bow removed.");
+                                }
+                                // Play arrow sound if available
+                                audioManager.playSound('KICK_1'); // Placeholder sound
+                            } else {
+                                console.log("Player 2 out of arrows!");
+                            }
                         }
 
                         // Always record the time of this kick (single or first tap)
@@ -1067,13 +1151,11 @@ export class GameManager {
                 for (let i = this.activeArrows.length - 1; i >= 0; i--) {
                     const arrow = this.activeArrows[i];
                     arrow.update(dt); // Update arrow physics (gravity, position)
-                    // Check ONLY for inactivity (out of bounds)
+                    // Check for inactivity (out of bounds)
                     if (!arrow.isActive) {
                         console.log("Removing inactive arrow (OOB) from GameManager list.");
                         this.activeArrows.splice(i, 1);
                     }
-                    // DO NOT remove based on hitSomething or arrow.state here
-                    // Sticking/Force application is handled in handleCollisions
                 }
                 
                 // *** Handle Collisions BEFORE updating the ball ***

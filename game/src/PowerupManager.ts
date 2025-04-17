@@ -5,8 +5,8 @@ import { Player } from './Player';
 export class PowerupManager {
     private activePowerups: Powerup[] = [];
     private spawnTimer: number = 0;
-    private minSpawnTime: number = 5; // Minimum seconds between spawns
-    private maxSpawnTime: number = 15; // Maximum seconds between spawns
+    private minSpawnTime: number = 15; // Minimum seconds between spawns (increased from 5 to 15)
+    private maxSpawnTime: number = 45; // Maximum seconds between spawns (increased from 15 to 45)
     private nextSpawnTime: number = 0;
 
     constructor() {

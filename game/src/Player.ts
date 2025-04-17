@@ -31,7 +31,7 @@ const KICK_THIGH_WINDUP_REL = Math.PI / 2.5; // Angle *back* from vertical (e.g.
 const KICK_THIGH_FOLLOW_REL = Math.PI / 1.5; // Keep angle *forward* MORE from vertical (e.g., 120 deg -> above horizontal)
 const KICK_SHIN_WINDUP_ANGLE = Math.PI * 0.6; // Bend shin back relative to thigh
 const KICK_SHIN_IMPACT_ANGLE = -Math.PI * 0.15; // Extend shin more at impact
-const KICK_DURATION_SECONDS = 0.45; // Faster duration again (was 0.9)
+const KICK_DURATION_SECONDS = 0.45; // Revert to original faster duration (was 0.85)
 const KICK_IMPACT_START = 0.15; // Widened impact phase start (was 0.25)
 const KICK_IMPACT_END = 0.70;   // Widened impact phase end (was 0.50)
 
@@ -143,7 +143,7 @@ export class Player {
     // id: number;
 
     // Base Size Attributes (adjust values based on reference)
-    public readonly baseHeadRadius: number = 10;
+    public readonly baseHeadRadius: number = 8; // Reduced from 10
     public readonly baseTorsoLength: number = 36;
     public readonly baseLimbWidth: number = 10;
     public readonly baseArmLength: number = 24;
@@ -760,83 +760,87 @@ export class Player {
         } 
         // --- NEW: Handle Bicycle Kick State --- 
         else if (this.isBicycleKicking) {
-            // console.log(`[Bicycle Kick Update] Start - Timer: ${this.bicycleKickTimer.toFixed(3)}, dt: ${dt.toFixed(4)}`);
+            const bicycleKickTotalDuration = 1.0; // Keep the slower duration
+
+            // --- Keyframes Definition (Refined based on reference image) --- 
+            // Angles relative to STAND_ANGLE (-PI/2)
+            // nk = Non-Kicking, k = Kicking
+            const keyframes = [
+                // KF0 (0%): Initial Slight Tuck / Lean Back
+                { time: 0.0, angles: { nkThigh: STAND_ANGLE - 0.2 * Math.PI, nkShin: 0.3 * Math.PI, kThigh: STAND_ANGLE - 0.1 * Math.PI, kShin: 0.2 * Math.PI, lArm: STAND_ANGLE + 0.2 * Math.PI, rArm: STAND_ANGLE - 0.2 * Math.PI, rotationMag: 0 } },
+                // KF1 (20%): Windup Peak / Start Rotation
+                { time: 0.2, angles: { nkThigh: STAND_ANGLE - 0.7 * Math.PI, nkShin: 0.8 * Math.PI, kThigh: STAND_ANGLE + 0.3 * Math.PI, kShin: 0.6 * Math.PI, lArm: STAND_ANGLE + 0.6 * Math.PI, rArm: STAND_ANGLE - 0.7 * Math.PI, rotationMag: 0.4 * Math.PI } }, 
+                // KF2 (50%): Impact / Inverted / Kicking Leg Extended
+                { time: 0.5, angles: { nkThigh: STAND_ANGLE - 0.9 * Math.PI, nkShin: 0.8 * Math.PI, kThigh: STAND_ANGLE - 1.5 * Math.PI, kShin: 0.0 * Math.PI, lArm: STAND_ANGLE - 0.8 * Math.PI, rArm: STAND_ANGLE - 0.8 * Math.PI, rotationMag: 1.0 * Math.PI } }, 
+                // KF3 (75%): Follow-through / Rotating Down / Kicking Leg Retracting
+                { time: 0.75, angles: { nkThigh: STAND_ANGLE - 0.8 * Math.PI, nkShin: 0.9 * Math.PI, kThigh: STAND_ANGLE - 0.6 * Math.PI, kShin: 0.7 * Math.PI, lArm: STAND_ANGLE - 0.5 * Math.PI, rArm: STAND_ANGLE + 0.5 * Math.PI, rotationMag: 1.6 * Math.PI } },
+                // KF4 (100%): End pose / Blending towards landing
+                { time: 1.0, angles: { nkThigh: STAND_ANGLE - 0.4 * Math.PI, nkShin: 0.5 * Math.PI, kThigh: STAND_ANGLE - 0.4 * Math.PI, kShin: 0.5 * Math.PI, lArm: STAND_ANGLE, rArm: STAND_ANGLE, rotationMag: 2.0 * Math.PI } } 
+            ];
             
-            const bicycleKickTotalDuration = 0.8; // Shorten duration slightly for snappiness
-            const kickExtensionStartTime = bicycleKickTotalDuration * 0.3; // Start extending leg earlier
-            const kickExtensionPeakTime = bicycleKickTotalDuration * 0.5; // Peak extension at midpoint
-            const kickRetractionStartTime = bicycleKickTotalDuration * 0.6; // Start retracting after peak
-            
+            // Update the timer
             this.bicycleKickTimer += dt;
-            const overallProgress = Math.min(this.bicycleKickTimer / bicycleKickTotalDuration, 1.0);
-
-            // --- Rotation (Smoother EaseInOut) --- 
-            let targetRotation = lerp(0, Math.PI * 2, easeInOutQuad(overallProgress)); // Full rotation
+            const overallProgress = Math.min(this.bicycleKickTimer / bicycleKickTotalDuration, 1.0); 
             
-            // Apply rotation based on facing direction (Rotate Backwards)
-            this.rotationAngle = this.facingDirection === 1 ? -targetRotation : targetRotation;
-
-            // --- Limb Animation (More Dynamic) --- 
-            const tuckedThighAngle = STAND_ANGLE - Math.PI * 0.4; 
-            const tuckedShinAngle = Math.PI * 0.4 * 1.5; 
-            // Redefine extended angles relative to STAND_ANGLE to avoid issues when rotated
-            const extendedThighAngle = STAND_ANGLE + Math.PI * 1.1; // Point leg backwards relative to standard upright pose
-            const extendedShinAngle = -0.1; // Slightly bent shin relative to thigh
-
-            if (this.bicycleKickTimer < kickExtensionStartTime) {
-                // Still tucking in / preparing
-                this.leftThighAngle = tuckedThighAngle;
-                this.rightThighAngle = tuckedThighAngle;
-                this.leftShinAngle = tuckedShinAngle;
-                this.rightShinAngle = tuckedShinAngle;
-            } else if (this.bicycleKickTimer < kickRetractionStartTime) {
-                // Extending towards peak kick
-                // Calculate progress within the extension phase (0 to 1)
-                const extensionProgress = (this.bicycleKickTimer - kickExtensionStartTime) / (kickExtensionPeakTime - kickExtensionStartTime);
-                const easedExtensionProgress = easeOutQuad(Math.min(extensionProgress, 1.0)); // Clamp progress
-
-                // Interpolate angles for both legs towards extended position
-                this.leftThighAngle = lerp(tuckedThighAngle, extendedThighAngle, easedExtensionProgress);
-                this.rightThighAngle = lerp(tuckedThighAngle, extendedThighAngle, easedExtensionProgress); // Keep symmetric
-                this.leftShinAngle = lerp(tuckedShinAngle, extendedShinAngle, easedExtensionProgress);
-                this.rightShinAngle = lerp(tuckedShinAngle, extendedShinAngle, easedExtensionProgress); // Keep symmetric
-            } else { // After kick peak, start retracting for landing
-                // Retract legs slightly for landing / follow-through
-                // Calculate progress within the retraction phase (0 to 1)
-                const retractionProgress = (this.bicycleKickTimer - kickRetractionStartTime) / (bicycleKickTotalDuration - kickRetractionStartTime);
-                const easedRetractionProgress = easeInQuad(Math.min(retractionProgress, 1.0)); // Clamp progress
-
-                // Interpolate back towards a tucked/neutral landing pose 
-                const landingThighAngle = STAND_ANGLE - Math.PI * 0.2; // Less tucked than initial
-                const landingShinAngle = Math.PI * 0.3;
-
-                this.leftThighAngle = lerp(extendedThighAngle, landingThighAngle, easedRetractionProgress);
-                this.rightThighAngle = lerp(extendedThighAngle, landingThighAngle, easedRetractionProgress); // Symmetric
-                this.leftShinAngle = lerp(extendedShinAngle, landingShinAngle, easedRetractionProgress);
-                this.rightShinAngle = lerp(extendedShinAngle, landingShinAngle, easedRetractionProgress); // Symmetric
+            // --- Find keyframes to interpolate between ---
+            let startKeyframe = keyframes[0];
+            let endKeyframe = keyframes[1];
+            
+            for (let i = 0; i < keyframes.length - 1; i++) {
+                if (overallProgress >= keyframes[i].time && overallProgress < keyframes[i + 1].time) {
+                    startKeyframe = keyframes[i];
+                    endKeyframe = keyframes[i + 1];
+                    break;
+                }
             }
             
-            // --- Arm Animation --- (Flail based on rotation)
-            this.leftArmAngle = -this.rotationAngle + STAND_ANGLE + Math.PI * 0.2; // Counter-rotate slightly
-            this.rightArmAngle = -this.rotationAngle + STAND_ANGLE - Math.PI * 0.2;
+            // Get the angles from current segment
+            const startAngles = startKeyframe.angles;
+            const endAngles = endKeyframe.angles;
+            
+            // Calculate progress within the current segment (0 to 1)
+            const segmentDuration = endKeyframe.time - startKeyframe.time;
+            const segmentProgress = segmentDuration > 0 
+                ? (overallProgress - startKeyframe.time) / segmentDuration 
+                : 1.0;
+            
+            // --- Interpolate all angles ---
+            const interpolatedNkThigh = lerp(startAngles.nkThigh, endAngles.nkThigh, segmentProgress);
+            const interpolatedKThigh = lerp(startAngles.kThigh, endAngles.kThigh, segmentProgress);
+            const interpolatedNkShin = lerp(startAngles.nkShin, endAngles.nkShin, segmentProgress);
+            const interpolatedKShin = lerp(startAngles.kShin, endAngles.kShin, segmentProgress);
+            const interpolatedLArm = lerp(startAngles.lArm, endAngles.lArm, segmentProgress);
+            const interpolatedRArm = lerp(startAngles.rArm, endAngles.rArm, segmentProgress);
+            const interpolatedRotationMag = lerp(startAngles.rotationMag, endAngles.rotationMag, segmentProgress);
 
-            // --- Physics --- 
-            this.vx = 0; // Lock horizontal movement
-            // Gravity applied outside this block
+            // --- Apply Angles --- 
+            const isRightLegKicking = this.facingDirection !== 1; // Right leg kicks if facing left
+
+            if (isRightLegKicking) {
+                this.rightThighAngle = interpolatedKThigh;
+                this.rightShinAngle = interpolatedKShin;
+                this.leftThighAngle = interpolatedNkThigh;
+                this.leftShinAngle = interpolatedNkShin;
+            } else { // Left leg is kicking
+                this.leftThighAngle = interpolatedKThigh;
+                this.leftShinAngle = interpolatedKShin;
+                this.rightThighAngle = interpolatedNkThigh;
+                this.rightShinAngle = interpolatedNkShin;
+            }
+            // Apply arm angles directly
+            this.leftArmAngle = interpolatedLArm;
+            this.rightArmAngle = interpolatedRArm;
+
+            // Apply Rotation 
+            // Match reference: If right leg kicks (facing left), rotate CW (+). If left leg kicks (facing right), rotate CCW (-).
+            this.rotationAngle = isRightLegKicking ? interpolatedRotationMag : -interpolatedRotationMag;
 
             // --- End State --- 
             if (overallProgress >= 1.0) {
-                // Finished - reset state
                 this.isBicycleKicking = false;
                 this.bicycleKickTimer = 0;
-                this.rotationAngle = 0; // Ensure upright
-                // Reset limbs towards standing pose immediately after finish
-                this.leftThighAngle = STAND_ANGLE;
-                this.rightThighAngle = STAND_ANGLE;
-                this.leftShinAngle = 0;
-                this.rightShinAngle = 0;
-                this.leftArmAngle = STAND_ANGLE;
-                this.rightArmAngle = STAND_ANGLE;
+                this.rotationAngle = 0; // Reset rotation explicitly
+                // Limb angles will blend back in the next frame via idle/walk/jump logic
             }
         }
         else if (!this.isSwingingSword) { // Regular movement/idle (only if not kicking AND not swinging)
@@ -1007,14 +1011,25 @@ export class Player {
             this.bicycleKickTimer = 0;
             this.rotationAngle = 0;
             
-            // Initialize leg positions to ensure they're visible throughout the animation
-            const tuckedThighAngle = STAND_ANGLE - Math.PI * 0.4;
-            const tuckedShinAngle = Math.PI * 0.4 * 1.5;
-            
-            this.leftThighAngle = tuckedThighAngle;
-            this.rightThighAngle = tuckedThighAngle;
-            this.leftShinAngle = tuckedShinAngle;
-            this.rightShinAngle = tuckedShinAngle;
+            // --- Initialize to KF0 Angles (Refined) --- 
+            const kf0Angles = { nkThigh: STAND_ANGLE - 0.2 * Math.PI, nkShin: 0.3 * Math.PI, kThigh: STAND_ANGLE - 0.1 * Math.PI, kShin: 0.2 * Math.PI, lArm: STAND_ANGLE + 0.2 * Math.PI, rArm: STAND_ANGLE - 0.2 * Math.PI }; // Angles from refined KF0
+            const isRightLegKicking = this.facingDirection !== 1;
+
+            if (isRightLegKicking) {
+                this.rightThighAngle = kf0Angles.kThigh;
+                this.rightShinAngle = kf0Angles.kShin;
+                this.leftThighAngle = kf0Angles.nkThigh;
+                this.leftShinAngle = kf0Angles.nkShin;
+                this.rightArmAngle = kf0Angles.rArm; // Initialize arms
+                this.leftArmAngle = kf0Angles.lArm;
+            } else { // Left leg is kicking
+                this.leftThighAngle = kf0Angles.kThigh;
+                this.leftShinAngle = kf0Angles.kShin;
+                this.rightThighAngle = kf0Angles.nkThigh;
+                this.rightShinAngle = kf0Angles.nkShin;
+                this.leftArmAngle = kf0Angles.lArm; // Initialize arms
+                this.rightArmAngle = kf0Angles.rArm;
+            }
             
             // Reset kick impact tracking
             this.minKickDistSq = Infinity;
@@ -1162,6 +1177,40 @@ export class Player {
         const footPos = calculateEndPoint(kneePos, shinLength, thighAngle + shinAngle);
 
         return footPos;
+    }
+
+    /**
+     * Get the impact point for a bicycle kick.
+     * This is used for collision detection with the ball and other players.
+     */
+    getBicycleKickImpactPoint(): Point | null {
+        if (!this.isBicycleKicking) return null;
+        
+        console.log(`[BicycleKick DETAIL] Progress: ${(this.bicycleKickTimer / 1.0).toFixed(2)}, Rotation: ${(this.rotationAngle * 180 / Math.PI).toFixed(1)}°`);
+        
+        // IMPROVED: Create a larger area for impact detection to ensure hits register
+        // Calculate position based on the rotation
+        const radius = this.legLength * 1.2; // Increased radius for better hit detection
+        
+        // Get rotation phase - useful for debugging
+        let phase = "";
+        const progress = this.bicycleKickTimer / 1.0;
+        if (progress < 0.2) phase = "windup";
+        else if (progress < 0.5) phase = "rising";
+        else if (progress < 0.75) phase = "impact";
+        else phase = "recovery";
+        
+        // Use the rotation angle to determine where the foot is
+        // The impact point should trace an arc as the player rotates
+        const angle = this.rotationAngle + (this.facingDirection > 0 ? Math.PI * 0.25 : -Math.PI * 0.25);
+        
+        // Calculate the kicking foot position
+        const footX = this.x + Math.cos(angle) * radius; // REMOVED * this.facingDirection
+        const footY = this.y - Math.sin(angle) * radius;
+        
+        console.log(`[BicycleKick] Impact Point: (${footX.toFixed(1)}, ${footY.toFixed(1)}), Angle: ${(angle * 180 / Math.PI).toFixed(1)}°, Phase: ${phase}, Facing: ${this.facingDirection}`);
+        
+        return { x: footX, y: footY };
     }
 
     /**
