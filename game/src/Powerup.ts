@@ -86,60 +86,26 @@ export class Powerup {
         }
     }
 
-    draw(ctx: CanvasRenderingContext2D): void {
-        if (!this.isActive) return;
+    // Static method to draw the symbol for a given powerup type
+    static drawSymbol(ctx: CanvasRenderingContext2D, type: PowerupType, centerX: number, centerY: number, size: number): void {
+        const boxW = size;
+        const boxH = size;
 
-        // Apply sway offset to the base X position for drawing
-        const baseDrawX = this.x + this.currentSwayOffset;
-
-        const boxX = baseDrawX; // Use swayed X for the box
-        const boxY = this.y;
-        const boxW = this.width;
-        const boxH = this.height;
-
-        // Draw Parachute if applicable
-        if (this.hasParachute) {
-            const chuteWidth = boxW * 2.0; // Slightly smaller chute
-            const chuteHeight = boxH * 1.5;
-            const chuteX = boxX + boxW / 2 - chuteWidth / 2;
-            const chuteY = boxY - chuteHeight - boxH * 0.2; // Position above the box
-
-            // Draw canopy (simple arc)
-            ctx.fillStyle = C.WHITE; // White canopy
-            ctx.strokeStyle = C.BLACK;
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.arc(chuteX + chuteWidth / 2, chuteY + chuteHeight, chuteWidth / 2, Math.PI, 0); // Semicircle
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-
-            // Draw lines from canopy edges to box corners
-            ctx.beginPath();
-            // Connect lines to the *original* box position, not the swayed one, for visual effect
-            ctx.moveTo(chuteX, chuteY + chuteHeight); // Left canopy edge (also swayed)
-            ctx.lineTo(boxX, boxY); // Top-left corner of swayed box
-            ctx.moveTo(chuteX + chuteWidth, chuteY + chuteHeight); // Right canopy edge (also swayed)
-            ctx.lineTo(boxX + boxW, boxY); // Top-right corner of swayed box
-            ctx.stroke();
-        }
-
-        // --- Draw Specific Icon based on Type --- 
         ctx.save();
-        ctx.translate(boxX + boxW / 2, boxY + boxH / 2); // Center coordinates for easier drawing
+        ctx.translate(centerX, centerY); // Center coordinates for easier drawing
 
-        // Draw background box first
-        ctx.fillStyle = C.WHITE; // White background
-        ctx.strokeStyle = C.BLACK; 
-        ctx.lineWidth = 1; // Thinner border for the box
-        ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
-        ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+        // Draw background box first (optional, can be handled by caller if needed)
+        // ctx.fillStyle = C.WHITE; // White background
+        // ctx.strokeStyle = C.BLACK; 
+        // ctx.lineWidth = 1; // Thinner border for the box
+        // ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+        // ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
 
         // Common style for icons (applied AFTER box)
         ctx.lineWidth = 2;
         ctx.strokeStyle = C.BLACK;
 
-        switch (this.type) {
+        switch (type) {
             case PowerupType.SPEED_BOOST:
                 ctx.fillStyle = '#FFFF00'; // Yellow
                 ctx.beginPath(); // Lightning bolt shape
@@ -258,7 +224,7 @@ export class Powerup {
                 ctx.lineTo(boxW * 0.15, boxH * 0.3);
                 ctx.stroke();
                 // Left arrow
-                 ctx.beginPath();
+                ctx.beginPath();
                 ctx.moveTo(-boxW * 0.1, 0);
                 ctx.lineTo(-boxW * 0.4, 0);
                 ctx.moveTo(-boxW * 0.3, -boxH * 0.15);
@@ -266,7 +232,7 @@ export class Powerup {
                 ctx.lineTo(-boxW * 0.3, boxH * 0.15);
                 ctx.stroke();
                 // Right arrow
-                 ctx.beginPath();
+                ctx.beginPath();
                 ctx.moveTo(boxW * 0.1, 0);
                 ctx.lineTo(boxW * 0.4, 0);
                 ctx.moveTo(boxW * 0.3, -boxH * 0.15);
@@ -275,15 +241,70 @@ export class Powerup {
                 ctx.stroke();
                 break;
             default:
-                // Fallback to purple box if type is unknown
-                ctx.fillStyle = 'purple'; 
-                ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
-                ctx.strokeStyle = C.WHITE;
-                ctx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+                // Draw a simple question mark for unknown types
+                ctx.fillStyle = C.BLACK;
+                ctx.font = `bold ${boxH * 0.6}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('?', 0, 0);
+                break;
         }
 
-        ctx.restore();
-        // ---------------------------------------
+        ctx.restore(); // Restore context state
+    }
+
+    draw(ctx: CanvasRenderingContext2D): void {
+        if (!this.isActive) return;
+
+        // Apply sway offset to the base X position for drawing
+        const baseDrawX = this.x + this.currentSwayOffset;
+
+        const boxX = baseDrawX; // Use swayed X for the box
+        const boxY = this.y;
+        const boxW = this.width;
+        const boxH = this.height;
+
+        // Draw Parachute if applicable
+        if (this.hasParachute) {
+            const chuteWidth = boxW * 2.0; // Slightly smaller chute
+            const chuteHeight = boxH * 1.5;
+            const chuteX = boxX + boxW / 2 - chuteWidth / 2;
+            const chuteY = boxY - chuteHeight - boxH * 0.2; // Position above the box
+
+            // Draw canopy (simple arc)
+            ctx.fillStyle = C.WHITE; // White canopy
+            ctx.strokeStyle = C.BLACK;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(chuteX + chuteWidth / 2, chuteY + chuteHeight, chuteWidth / 2, Math.PI, 0); // Semicircle
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Draw lines from canopy edges to box corners
+            ctx.beginPath();
+            // Connect lines to the *original* box position, not the swayed one, for visual effect
+            ctx.moveTo(chuteX, chuteY + chuteHeight); // Left canopy edge (also swayed)
+            ctx.lineTo(boxX, boxY); // Top-left corner of swayed box
+            ctx.moveTo(chuteX + chuteWidth, chuteY + chuteHeight); // Right canopy edge (also swayed)
+            ctx.lineTo(boxX + boxW, boxY); // Top-right corner of swayed box
+            ctx.stroke();
+        }
+
+        // --- Draw Specific Icon based on Type --- 
+        // Draw background box 
+        ctx.fillStyle = C.WHITE; // White background
+        ctx.strokeStyle = C.BLACK; 
+        ctx.lineWidth = 1; // Thinner border for the box
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+        // Call the static method to draw the symbol inside the box
+        Powerup.drawSymbol(ctx, this.type, boxX + boxW / 2, boxY + boxH / 2, boxW); // Use boxW for size
+
+        // REMOVED Original symbol drawing logic here - now handled by static method
+
+        // ctx.restore(); // Restore moved to static method
     }
 
     // Helper method for collision detection

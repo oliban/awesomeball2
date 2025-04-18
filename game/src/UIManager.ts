@@ -1,6 +1,6 @@
 import * as C from './Constants';
 import { ASSETS } from './Constants';
-import { PowerupType } from './Powerup';
+import { PowerupType, Powerup } from './Powerup';
 
 // --- Simple Image Cache --- 
 class ImageCache {
@@ -250,48 +250,68 @@ export class UIManager {
     private drawDebugInfo(gameState: UIGameState): void {
         if (gameState.debugSelectedPowerupType) {
             const type = gameState.debugSelectedPowerupType;
-            // Construct the key matching Constants.ASSETS.IMAGES.POWERUPS
-            const powerupKey = Object.keys(PowerupType).find(key => PowerupType[key as keyof typeof PowerupType] === type) as keyof typeof C.ASSETS.IMAGES.POWERUPS | undefined;
+            
+            // Define position and size for the debug icon
+            const iconSize = C.POWERUP_ICON_SIZE * 1.5; // Make debug icon slightly larger
+            const padding = 10;
+            const textPadding = 5;
+            const labelText = "Next:";
+            const typeText = `${type}`;
 
-            if (powerupKey && C.ASSETS.IMAGES.POWERUPS[powerupKey]) {
-                const imagePath = C.ASSETS.IMAGES.POWERUPS[powerupKey];
-                const icon = this.imageCache.getImage(imagePath);
+            // Calculate text widths
+            const labelFontSize = 12;
+            this.ctx.font = `${labelFontSize}px Arial`;
+            const labelWidth = this.ctx.measureText(labelText).width;
+            const typeFontSize = 14;
+            this.ctx.font = `bold ${typeFontSize}px Arial`;
+            const typeWidth = this.ctx.measureText(typeText).width;
 
-                if (icon) {
-                    // Draw icon in top-left corner
-                    const iconSize = C.POWERUP_ICON_SIZE * 1.5; // Make debug icon slightly larger
-                    const padding = 10;
-                    this.ctx.drawImage(icon, padding, padding, iconSize, iconSize);
+            // Calculate total width needed for the background
+            const totalContentWidth = labelWidth + textPadding + iconSize + textPadding + typeWidth;
+            const backgroundWidth = totalContentWidth + padding * 2;
+            const backgroundHeight = iconSize + padding;
+            const backgroundX = padding / 2;
+            const backgroundY = padding / 2;
+            const borderRadius = 5;
 
-                    // Draw text next to icon
-                    const fontSize = 12;
-                    this.ctx.font = `${fontSize}px Arial`;
-                    this.ctx.fillStyle = C.WHITE;
-                    this.ctx.textAlign = 'left';
-                    this.ctx.textBaseline = 'top';
-                    const text = `(${type})`; // Show type name next to icon
-                    this.ctx.fillText(text, padding + iconSize + 5, padding + (iconSize / 2) - (fontSize / 2));
+            // Draw rounded background rectangle
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; // Slightly darker background
+            this.ctx.beginPath();
+            this.ctx.moveTo(backgroundX + borderRadius, backgroundY);
+            this.ctx.lineTo(backgroundX + backgroundWidth - borderRadius, backgroundY);
+            this.ctx.quadraticCurveTo(backgroundX + backgroundWidth, backgroundY, backgroundX + backgroundWidth, backgroundY + borderRadius);
+            this.ctx.lineTo(backgroundX + backgroundWidth, backgroundY + backgroundHeight - borderRadius);
+            this.ctx.quadraticCurveTo(backgroundX + backgroundWidth, backgroundY + backgroundHeight, backgroundX + backgroundWidth - borderRadius, backgroundY + backgroundHeight);
+            this.ctx.lineTo(backgroundX + borderRadius, backgroundY + backgroundHeight);
+            this.ctx.quadraticCurveTo(backgroundX, backgroundY + backgroundHeight, backgroundX, backgroundY + backgroundHeight - borderRadius);
+            this.ctx.lineTo(backgroundX, backgroundY + borderRadius);
+            this.ctx.quadraticCurveTo(backgroundX, backgroundY, backgroundX + borderRadius, backgroundY);
+            this.ctx.closePath();
+            this.ctx.fill();
 
-                } else {
-                    // Fallback: Draw text if icon is still loading
-                    const fontSize = 12;
-                    this.ctx.font = `${fontSize}px Arial`;
-                    this.ctx.fillStyle = '#FFA500'; // Orange to indicate loading
-                    this.ctx.textAlign = 'left';
-                    this.ctx.textBaseline = 'top';
-                    const text = `Loading ${type}...`;
-                    this.ctx.fillText(text, 10, 10); // Top-left corner
-                }
-            } else {
-                // Fallback if path not found
-                 const fontSize = 12;
-                this.ctx.font = `${fontSize}px Arial`;
-                this.ctx.fillStyle = '#FF0000'; // Red for error
-                this.ctx.textAlign = 'left';
-                this.ctx.textBaseline = 'top';
-                const text = `Icon path missing for ${type}`; 
-                this.ctx.fillText(text, 10, 10); // Top-left corner
-            }
+            // Define drawing positions relative to the background
+            const contentY = backgroundY + backgroundHeight / 2;
+            let currentX = backgroundX + padding;
+
+            // Draw "Next:" label
+            this.ctx.font = `${labelFontSize}px Arial`;
+            this.ctx.fillStyle = '#cccccc'; // Lighter grey for label
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(labelText, currentX, contentY);
+            currentX += labelWidth + textPadding;
+
+            // Draw the powerup symbol
+            const iconCenterX = currentX + iconSize / 2;
+            Powerup.drawSymbol(this.ctx, type, iconCenterX, contentY, iconSize);
+            currentX += iconSize + textPadding;
+
+            // Draw text label (Powerup Type)
+            this.ctx.font = `bold ${typeFontSize}px Arial`;
+            this.ctx.fillStyle = C.WHITE;
+            this.ctx.textAlign = 'left';
+            this.ctx.textBaseline = 'middle'; 
+            this.ctx.fillText(typeText, currentX, contentY);
         }
     }
 
