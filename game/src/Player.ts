@@ -615,8 +615,10 @@ export class Player {
      * @param dt Delta time
      * @param groundY Ground Y coordinate
      * @param screenWidth Screen width
+     * @param isLeftGoalEnlarged True if the left goal (P1's goal) is enlarged.
+     * @param isRightGoalEnlarged True if the right goal (P2's goal) is enlarged.
      */
-    public update(dt: number, groundY: number, screenWidth: number) {
+    public update(dt: number, groundY: number, screenWidth: number, isLeftGoalEnlarged: boolean, isRightGoalEnlarged: boolean) {
         // Reset flags
         this.onOtherPlayerHead = false;
         this.onLeftCrossbar = false; // Reset crossbar flags
@@ -638,17 +640,34 @@ export class Player {
         // Update HORIZONTAL position ALWAYS (using existing velocity)
         this.x += this.vx * dt;
 
+        // --- Calculate Effective Crossbar Positions --- 
+        const enlargeFactor = C.POWERUP_GOAL_ENLARGE_FACTOR;
+        const crossbarThickness = C.GOAL_POST_THICKNESS;
+
+        // Left Goal (P1 Goal) Effective Height/Y
+        const leftGoalEffectiveHeight = isLeftGoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const leftCrossbarEffectiveTopY = groundY - leftGoalEffectiveHeight - crossbarThickness; // Top surface Y
+        const leftGoalEffectiveWidth = isLeftGoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const leftGoalEffectiveX = C.LEFT_GOAL_X; // X doesn't change
+
+        // Right Goal (P2 Goal) Effective Height/Y
+        const rightGoalEffectiveHeight = isRightGoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const rightCrossbarEffectiveTopY = groundY - rightGoalEffectiveHeight - crossbarThickness; // Top surface Y
+        const rightGoalEffectiveWidth = isRightGoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const rightGoalEffectiveX = C.RIGHT_GOAL_X - (rightGoalEffectiveWidth - C.GOAL_WIDTH); // X shifts left
+        // -----------------------------------------------
+
         let landedOnCrossbar = false;
-        const crossbarTopY = GOAL_Y_POS - POST_THICKNESS; // Y coord of the top surface of the crossbar
+        // Removed old crossbarTopY calculation
 
         // --- Check Crossbar Collision --- 
         // Only check if falling or stationary vertically (vy >= 0)
         if (this.vy >= 0) {
-            // Left Crossbar
-            const leftCrossbar = { x: LEFT_GOAL_X, y: crossbarTopY, width: GOAL_WIDTH };
+            // Left Crossbar Check (Use Effective Dimensions)
+            const leftCrossbar = { x: leftGoalEffectiveX, y: leftCrossbarEffectiveTopY, width: leftGoalEffectiveWidth };
             if (this.x >= leftCrossbar.x && this.x <= leftCrossbar.x + leftCrossbar.width && 
-                this.y >= leftCrossbar.y && this.y <= leftCrossbar.y + 10) { // Check if feet are at or slightly below top
-                this.y = leftCrossbar.y; // Snap feet to crossbar top
+                this.y >= leftCrossbar.y && this.y <= leftCrossbar.y + 10) { // Check if feet are at or slightly below effective top
+                this.y = leftCrossbar.y; // Snap feet to effective crossbar top
                 this.vy = 0;
                 this.isJumping = false;
                 this.onLeftCrossbar = true;
@@ -659,12 +678,12 @@ export class Player {
                 }
             }
 
-            // Right Crossbar (only if not already landed on left)
+            // Right Crossbar Check (Use Effective Dimensions)
             if (!landedOnCrossbar) {
-                const rightCrossbar = { x: RIGHT_GOAL_X, y: crossbarTopY, width: GOAL_WIDTH };
+                const rightCrossbar = { x: rightGoalEffectiveX, y: rightCrossbarEffectiveTopY, width: rightGoalEffectiveWidth };
                 if (this.x >= rightCrossbar.x && this.x <= rightCrossbar.x + rightCrossbar.width &&
-                    this.y >= rightCrossbar.y && this.y <= rightCrossbar.y + 10) { 
-                    this.y = rightCrossbar.y; // Snap feet to crossbar top
+                    this.y >= rightCrossbar.y && this.y <= rightCrossbar.y + 10) { // Check if feet are at or slightly below effective top
+                    this.y = rightCrossbar.y; // Snap feet to effective crossbar top
                     this.vy = 0;
                     this.isJumping = false;
                     this.onRightCrossbar = true;
@@ -1389,20 +1408,25 @@ export class Player {
         this.rocketAmmo--;
         console.log(`Player ${this.facingDirection === 1 ? 1 : 2} fired rocket! Ammo left: ${this.rocketAmmo}`);
 
-        // --- Calculate Spawn Position from Launcher Nozzle --- 
-        const launcherWidth = this.armLength * 1.1; 
-        const launcherHeight = this.limbWidth * 0.8;
-        const verticalOffset = -this.legLength - this.torsoLength * 0.3; // Same as draw logic
-        const horizontalOffset = this.facingDirection * (this.limbWidth * 0.5); // Same as draw logic
+        // --- Calculate Spawn Position (Revised Logic) ---
+        const verticalOffset = -this.legLength - this.torsoLength * 0.3; // Vertical position of launcher center (relative to feet)
+        const playerBodyWidthApprox = this.limbWidth * 2; // Approximate player collision width
+        const launcherWidth = this.armLength * 1.1; // Width of the launcher visual
+        const launcherHorizontalOffset = this.facingDirection * (this.limbWidth * 0.5); // Base position of launcher relative to player center
 
-        // Nozzle position relative to player's base coordinates (this.x, this.y)
-        const nozzleTipOffset = this.facingDirection === 1 ? launcherWidth + 5 : -5; // Offset from launcher origin
-        const launcherOriginX = this.x + horizontalOffset;
-        const launcherOriginY = this.y + verticalOffset;
+        // Find the furthest point of the launcher visual from player center x
+        // Need absolute value since horizontalOffset can be negative
+        const furthestLauncherPoint = Math.abs(launcherHorizontalOffset) + launcherWidth;
+        // Find the furthest point of the player body visual from player center x
+        const furthestBodyPoint = playerBodyWidthApprox / 2;
 
-        // Spawn slightly beyond the nozzle tip in the facing direction
-        const spawnX = launcherOriginX + (this.facingDirection * nozzleTipOffset) + (this.facingDirection * 5); // Add 5 units out
-        const spawnY = launcherOriginY; // Y position is centered on the launcher height
+        // Use the maximum of these extents
+        const maxExtent = Math.max(furthestLauncherPoint, furthestBodyPoint);
+        const buffer = 15; // Increased safety buffer
+
+        // Spawn the rocket at player center + max extent + buffer, in the facing direction
+        const spawnX = this.x + this.facingDirection * (maxExtent + buffer);
+        const spawnY = this.y + verticalOffset; // Spawn at the launcher's vertical level
         // -----------------------------------------------------
 
         // Calculate velocity

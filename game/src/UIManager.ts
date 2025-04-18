@@ -1,4 +1,36 @@
 import * as C from './Constants';
+import { ASSETS } from './Constants';
+import { PowerupType } from './Powerup';
+
+// --- Simple Image Cache --- 
+class ImageCache {
+    private cache: Map<string, HTMLImageElement> = new Map();
+    private loading: Set<string> = new Set();
+
+    getImage(src: string): HTMLImageElement | null {
+        if (this.cache.has(src)) {
+            return this.cache.get(src)!;
+        }
+
+        if (!this.loading.has(src)) {
+            this.loading.add(src);
+            const img = new Image();
+            img.onload = () => {
+                console.log(`Image loaded: ${src}`);
+                this.cache.set(src, img);
+                this.loading.delete(src);
+            };
+            img.onerror = () => {
+                console.error(`Failed to load image: ${src}`);
+                this.loading.delete(src);
+            };
+            img.src = src;
+        }
+
+        return null; // Return null while loading
+    }
+}
+// --------------------------
 
 // Interface for game state data needed by UI Manager
 export interface UIGameState {
@@ -13,7 +45,7 @@ export interface UIGameState {
     p1RocketAmmo?: number;
     p1HasBow?: boolean;
     p1ArrowAmmo?: number;
-    player1GoalEnlargeTimer?: number; // Add P1 Goal Enlarge Timer
+    player1GoalEnlargeTimer?: number | null;
     // Player 2 Status
     p2SpeedBoostTimer?: number;
     p2SuperJumpTimer?: number;
@@ -22,21 +54,24 @@ export interface UIGameState {
     p2RocketAmmo?: number;
     p2HasBow?: boolean;
     p2ArrowAmmo?: number;
-    player2GoalEnlargeTimer?: number; // Add P2 Goal Enlarge Timer
+    player2GoalEnlargeTimer?: number | null;
     // Global Status
     ballIsFrozen?: boolean;
     ballFreezeTimer?: number; // Maybe display time remaining?
     goalMessageTimer?: number; // Optional timer for goal message
-    matchOverTimer?: number; // Optional timer for match over message
-    winnerName?: string; // Optional winner name for match/game over
+    matchOverTimer?: number | null;
+    winnerName?: string | null;
+    debugSelectedPowerupType?: PowerupType;
     // Add other relevant state later: gamesWon, etc.
 }
 
 export class UIManager {
     private ctx: CanvasRenderingContext2D;
+    private imageCache: ImageCache;
 
     constructor(ctx: CanvasRenderingContext2D) {
         this.ctx = ctx;
+        this.imageCache = new ImageCache();
     }
 
     // Draw all relevant UI based on the game state
@@ -70,6 +105,8 @@ export class UIManager {
         }
         // Draw Global Status Text (e.g., Ball Frozen)
         this.drawGlobalStatusText(gameState);
+        this.drawGoalStatusText(gameState);
+        this.drawDebugInfo(gameState); // Draw debug info
         
         // TODO: Draw Debug info if enabled
     }
@@ -124,12 +161,6 @@ export class UIManager {
             this.ctx.fillText(`BIG! ${gameState.p1BigPlayerTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
             p1StatusY += fontSize + 2;
         }
-        if (gameState.player1GoalEnlargeTimer && gameState.player1GoalEnlargeTimer > 0) {
-            this.ctx.fillStyle = '#FFA500'; // Orange for goal enlarge
-            this.ctx.fillText(`GOAL ENLARGED: ${gameState.player1GoalEnlargeTimer.toFixed(1)}s`, p1StatusX, p1StatusY);
-            this.ctx.fillStyle = C.WHITE; // Reset color
-            p1StatusY += fontSize + 2;
-        }
         if (gameState.p1HasRocketLauncher && gameState.p1RocketAmmo !== undefined && gameState.p1RocketAmmo > 0) {
             this.ctx.fillStyle = '#FF4500'; // Orange for rockets
             this.ctx.fillText(`ROCKETS: ${gameState.p1RocketAmmo}`, p1StatusX, p1StatusY);
@@ -158,12 +189,6 @@ export class UIManager {
             this.ctx.fillText(`BIG! ${gameState.p2BigPlayerTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
             p2StatusY += fontSize + 2;
         }
-        if (gameState.player2GoalEnlargeTimer && gameState.player2GoalEnlargeTimer > 0) {
-            this.ctx.fillStyle = '#FFA500'; // Orange for goal enlarge
-            this.ctx.fillText(`GOAL ENLARGED: ${gameState.player2GoalEnlargeTimer.toFixed(1)}s`, p2StatusX, p2StatusY);
-            this.ctx.fillStyle = C.WHITE; // Reset color
-            p2StatusY += fontSize + 2;
-        }
         if (gameState.p2HasRocketLauncher && gameState.p2RocketAmmo !== undefined && gameState.p2RocketAmmo > 0) {
              this.ctx.fillStyle = '#FF4500'; // Orange for rockets
             this.ctx.fillText(`ROCKETS: ${gameState.p2RocketAmmo}`, p2StatusX, p2StatusY);
@@ -188,6 +213,28 @@ export class UIManager {
         }
     }
 
+    private drawGoalStatusText(gameState: UIGameState): void {
+        const fontSize = 16;
+        this.ctx.font = `bold ${fontSize}px Arial`;
+        this.ctx.fillStyle = '#FFA500'; // Orange
+        this.ctx.textAlign = 'center';
+        const yPos = 50; // Position below scoreboard
+
+        // Player 1 Goal (Left side)
+        if (gameState.player1GoalEnlargeTimer && gameState.player1GoalEnlargeTimer > 0) {
+            const text = `P1 GOAL ENLARGED: ${gameState.player1GoalEnlargeTimer.toFixed(1)}s`;
+            const xPos = C.SCREEN_WIDTH * 0.2; // Near left goal
+            this.ctx.fillText(text, xPos, yPos);
+        }
+
+        // Player 2 Goal (Right side)
+        if (gameState.player2GoalEnlargeTimer && gameState.player2GoalEnlargeTimer > 0) {
+            const text = `P2 GOAL ENLARGED: ${gameState.player2GoalEnlargeTimer.toFixed(1)}s`;
+            const xPos = C.SCREEN_WIDTH * 0.8; // Near right goal
+            this.ctx.fillText(text, xPos, yPos);
+        }
+    }
+
     private drawGoalMessage(): void {
         this.ctx.fillStyle = C.YELLOW; 
         this.ctx.font = '60px Impact';
@@ -200,9 +247,56 @@ export class UIManager {
         // including winner name (Nils/Harry) and restart prompt.
     }
 
+    private drawDebugInfo(gameState: UIGameState): void {
+        if (gameState.debugSelectedPowerupType) {
+            const type = gameState.debugSelectedPowerupType;
+            // Construct the key matching Constants.ASSETS.IMAGES.POWERUPS
+            const powerupKey = Object.keys(PowerupType).find(key => PowerupType[key as keyof typeof PowerupType] === type) as keyof typeof C.ASSETS.IMAGES.POWERUPS | undefined;
+
+            if (powerupKey && C.ASSETS.IMAGES.POWERUPS[powerupKey]) {
+                const imagePath = C.ASSETS.IMAGES.POWERUPS[powerupKey];
+                const icon = this.imageCache.getImage(imagePath);
+
+                if (icon) {
+                    // Draw icon in top-left corner
+                    const iconSize = C.POWERUP_ICON_SIZE * 1.5; // Make debug icon slightly larger
+                    const padding = 10;
+                    this.ctx.drawImage(icon, padding, padding, iconSize, iconSize);
+
+                    // Draw text next to icon
+                    const fontSize = 12;
+                    this.ctx.font = `${fontSize}px Arial`;
+                    this.ctx.fillStyle = C.WHITE;
+                    this.ctx.textAlign = 'left';
+                    this.ctx.textBaseline = 'top';
+                    const text = `(${type})`; // Show type name next to icon
+                    this.ctx.fillText(text, padding + iconSize + 5, padding + (iconSize / 2) - (fontSize / 2));
+
+                } else {
+                    // Fallback: Draw text if icon is still loading
+                    const fontSize = 12;
+                    this.ctx.font = `${fontSize}px Arial`;
+                    this.ctx.fillStyle = '#FFA500'; // Orange to indicate loading
+                    this.ctx.textAlign = 'left';
+                    this.ctx.textBaseline = 'top';
+                    const text = `Loading ${type}...`;
+                    this.ctx.fillText(text, 10, 10); // Top-left corner
+                }
+            } else {
+                // Fallback if path not found
+                 const fontSize = 12;
+                this.ctx.font = `${fontSize}px Arial`;
+                this.ctx.fillStyle = '#FF0000'; // Red for error
+                this.ctx.textAlign = 'left';
+                this.ctx.textBaseline = 'top';
+                const text = `Icon path missing for ${type}`; 
+                this.ctx.fillText(text, 10, 10); // Top-left corner
+            }
+        }
+    }
+
     // TODO: Add drawTrophyScreen method
     // TODO: Add drawBallIndicator method
-    // TODO: Add drawDebugInfo method
 }
 
 // Define constants used locally if not importing all from C

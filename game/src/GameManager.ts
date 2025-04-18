@@ -52,6 +52,12 @@ export class GameManager {
     private player1LastKickTime: number = 0;
     private player2LastKickTime: number = 0;
     
+    // Debug Properties
+    private debugAvailablePowerupTypes: PowerupType[] = Object.values(PowerupType);
+    private debugSelectedPowerupIndex: number = this.debugAvailablePowerupTypes.indexOf(PowerupType.GOAL_ENLARGE) >= 0 
+                                                  ? this.debugAvailablePowerupTypes.indexOf(PowerupType.GOAL_ENLARGE) 
+                                                  : 0; // Default to 0 if GOAL_ENLARGE not found
+    
     // Helper to spawn a specific powerup type at a location
     // Moved BEFORE constructor to fix runtime error
     private spawnSpecificPowerup(type: PowerupType, x: number, y: number): void {
@@ -212,8 +218,10 @@ export class GameManager {
         // ----------------------------------------------------
 
         // Check if ball is vertically within either potential goal height
-        const ballInP1GoalHeight = this.ball.y > p1GoalY && this.ball.y < C.GROUND_Y;
-        const ballInP2GoalHeight = this.ball.y > p2GoalY && this.ball.y < C.GROUND_Y;
+        // Use bottom of ball for check to handle crossbar hits better
+        const ballBottomY = this.ball.y + this.ball.radius;
+        const ballInP1GoalHeight = ballBottomY > p1GoalY && this.ball.y - this.ball.radius < C.GROUND_Y; // Ensure top is not below ground
+        const ballInP2GoalHeight = ballBottomY > p2GoalY && this.ball.y - this.ball.radius < C.GROUND_Y; // Ensure top is not below ground
 
         let goalScored = false;
         let scorer: number | null = null;
@@ -573,15 +581,79 @@ export class GameManager {
 
         const ball = this.ball; // Alias for brevity
 
-        // --- Ball-Wall Collision (Vertical Walls) ---
-        if (ball.x - ball.radius < C.GOAL_LINE_X_LEFT || ball.x + ball.radius > C.GOAL_LINE_X_RIGHT) {
-            // Allow passing through goal sides, reflect only if above goal height
-            if (ball.y < C.GOAL_Y_POS) { 
-                ball.vx *= -C.WALL_BOUNCE; // Use new constant
-                // Correct position immediately to prevent sticking
-                ball.x = (ball.x < C.SCREEN_WIDTH / 2) ? C.GOAL_LINE_X_LEFT + ball.radius : C.GOAL_LINE_X_RIGHT - ball.radius;
-                this.particleSystem.emit('dust', ball.x, ball.y, 8); // Increased count
+        // --- Calculate Effective Goal Dimensions for Collision --- 
+        const enlargeFactor = C.POWERUP_GOAL_ENLARGE_FACTOR;
+        // P1 Goal (Left)
+        const p1GoalHeight = this.isPlayer1GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p1GoalY = C.GROUND_Y - p1GoalHeight;
+        const p1GoalWidth = this.isPlayer1GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p1GoalX = C.LEFT_GOAL_X; // X position doesn't change (anchored left)
+        const p1GoalLine = p1GoalX; // Line P2 scores in
+        const p1CrossbarY = p1GoalY; // Top edge of the goal opening
+
+        // P2 Goal (Right)
+        const p2GoalHeight = this.isPlayer2GoalEnlarged ? C.GOAL_HEIGHT * enlargeFactor : C.GOAL_HEIGHT;
+        const p2GoalY = C.GROUND_Y - p2GoalHeight;
+        const p2GoalWidth = this.isPlayer2GoalEnlarged ? C.GOAL_WIDTH * enlargeFactor : C.GOAL_WIDTH;
+        const p2GoalX = C.RIGHT_GOAL_X - (p2GoalWidth - C.GOAL_WIDTH); // X pos adjusts based on width change
+        const p2GoalLine = p2GoalX + p2GoalWidth; // Line P1 scores in
+        const p2CrossbarY = p2GoalY; // Top edge of the goal opening
+        // -----------------------------------------------------
+
+        // --- Ball-Wall Collision (Vertical Walls including Goal Posts) ---
+        if (ball.x - ball.radius < C.GOAL_LINE_X_LEFT) { // Left goal area
+            // Reflect only if above the effective goal height
+            if (ball.y < p1GoalY) { 
+                ball.vx *= -C.WALL_BOUNCE;
+                ball.x = C.GOAL_LINE_X_LEFT + ball.radius;
+                this.particleSystem.emit('dust', ball.x, ball.y, 8);
+                 audioManager.playSound('WALL_HIT_1');
             }
+        } else if (ball.x + ball.radius > C.GOAL_LINE_X_RIGHT) { // Right goal area
+             // Reflect only if above the effective goal height
+            if (ball.y < p2GoalY) { 
+                ball.vx *= -C.WALL_BOUNCE;
+                ball.x = C.GOAL_LINE_X_RIGHT - ball.radius;
+                this.particleSystem.emit('dust', ball.x, ball.y, 8);
+                audioManager.playSound('WALL_HIT_1');
+            }
+        }
+
+        // --- Ball-Crossbar Collision ---
+        const crossbarThickness = C.GOAL_POST_THICKNESS; // Use constant
+
+        // Check Left Crossbar
+        if (ball.x >= p1GoalX && ball.x <= p1GoalX + p1GoalWidth && // Within horizontal bounds of P1 goal
+            ball.y + ball.radius >= p1CrossbarY - crossbarThickness && // Below top of crossbar
+            ball.y - ball.radius <= p1CrossbarY) { // Above bottom of crossbar
+            
+            // Check if impact is primarily vertical from below
+            if (ball.vy > 0) { // Moving downwards slightly
+                ball.y = p1CrossbarY - crossbarThickness - ball.radius; // Place ball on top
+                ball.vy *= -C.BALL_BOUNCE * 0.9; // Bounce off, slightly less bouncy than ground/wall
+                ball.vx *= 0.95; // Dampen horizontal speed slightly
+                console.log("Ball hit P1 Crossbar (bottom)!");
+                audioManager.playSound('CROSSBAR_HIT'); 
+                this.particleSystem.emit('dust', ball.x, ball.y, 5); 
+            } 
+            // TODO: Add check for hitting the side of the crossbar if needed (more complex)
+        }
+
+        // Check Right Crossbar
+        if (ball.x >= p2GoalX && ball.x <= p2GoalX + p2GoalWidth && // Within horizontal bounds of P2 goal
+            ball.y + ball.radius >= p2CrossbarY - crossbarThickness && // Below top of crossbar
+            ball.y - ball.radius <= p2CrossbarY) { // Above bottom of crossbar
+
+             // Check if impact is primarily vertical from below
+            if (ball.vy > 0) { // Moving downwards slightly
+                ball.y = p2CrossbarY - crossbarThickness - ball.radius; // Place ball on top
+                ball.vy *= -C.BALL_BOUNCE * 0.9; // Bounce off
+                ball.vx *= 0.95; // Dampen horizontal speed slightly
+                 console.log("Ball hit P2 Crossbar (bottom)!");
+                audioManager.playSound('CROSSBAR_HIT');
+                this.particleSystem.emit('dust', ball.x, ball.y, 5);
+            }
+             // TODO: Add check for hitting the side of the crossbar if needed
         }
 
         // --- Ball-Ceiling Collision ---
@@ -644,45 +716,58 @@ export class GameManager {
         // --- Rocket Collisions ---
         for (let i = this.activeRockets.length - 1; i >= 0; i--) {
             const rocket = this.activeRockets[i];
-            if (!rocket.isActive) continue; // Skip inactive rockets
-
             const rocketRect = rocket.getRect();
-            let exploded = false;
+            let hitPlayer: Player | null = null;
 
-            // Check Rocket vs Players
+            // Rocket vs Players
             for (const player of players) {
-                if (player === rocket.owner) continue; // Don't collide with self
-
                 const playerBodyRect = player.getBodyRect();
                 const playerHeadCircle = player.getHeadCircle();
 
-                // Check body collision
-                if (this.checkRectCollision(rocketRect, playerBodyRect)) {
-                    console.log(`Rocket hit Player ${player === this.player1 ? 1 : 2} body`);
-                    exploded = true;
-                    break; // Rocket explodes on first player hit
-                }
-                // Check head collision (circle-rect)
-                if (!exploded && this.checkCircleRectCollision(playerHeadCircle, rocketRect)) {
-                     console.log(`Rocket hit Player ${player === this.player1 ? 1 : 2} head`);
-                    exploded = true;
-                    break; // Rocket explodes on first player hit
+                if (this.checkRectCollision(rocketRect, playerBodyRect) || this.checkCircleRectCollision(playerHeadCircle, rocketRect)) {
+                    // Player was hit by the rocket itself
+                    hitPlayer = player;
+
+                    // Apply direct pushback before exploding
+                    const dirX = player.x - rocket.x;
+                    // const dirY = player.y - rocket.y; // Keep pushback mostly horizontal
+                    const dist = Math.sqrt(dirX*dirX); // Use X-dist for normalization
+                    if (dist > 0) {
+                        const normX = dirX / dist;
+                        const pushForce = C.ROCKET_HIT_PUSHBACK_FORCE;
+                        player.vx += normX * pushForce; 
+                        console.log(`Rocket direct hit on Player ${player === this.player1 ? 1:2}. Applying pushback vx: ${(normX * pushForce).toFixed(1)}`);
+                        // Add a small upward boost regardless of direction to pop them up slightly
+                        player.vy -= 60; // Small fixed upward boost
+                        player.isJumping = true; // Ensure they leave the ground if hit
+                    }
+
+                    rocket.exploded = true;
+                    break; // A rocket hits only one player directly
                 }
             }
 
-            // Check Rocket vs Ball (only if not already exploded)
-            // Use ball's direct properties for circle-rect check
-            const ballCircle = { x: this.ball.x, y: this.ball.y, radius: this.ball.radius };
-            if (!exploded && this.checkCircleRectCollision(ballCircle, rocketRect)) {
-                console.log("Rocket hit Ball");
-                exploded = true;
+            // Rocket vs Ball
+            if (!rocket.exploded) {
+                const ballCircle = { x: this.ball.x, y: this.ball.y, radius: this.ball.radius };
+                if (this.checkCircleRectCollision(ballCircle, rocketRect)) {
+                    console.log("Rocket hit ball");
+                    rocket.exploded = true;
+                }
             }
 
-            // Handle explosion if occurred
-            if (exploded) {
-                this.createExplosion(rocket.lastPos.x, rocket.lastPos.y); // Use rocket's last pos
-                rocket.isActive = false; // Deactivate rocket visually
-                // Don't splice here, let the main rocket update loop handle removal
+            // Rocket vs Terrain/Walls
+            if (!rocket.exploded && (rocket.x < 0 || rocket.x > C.SCREEN_WIDTH || rocket.y < 0 || rocket.y > C.GROUND_Y)) {
+                 console.log("Rocket hit terrain/wall");
+                 rocket.exploded = true;
+            }
+
+            if (rocket.exploded) {
+                 console.log(`Rocket exploded at (${rocket.x.toFixed(0)}, ${rocket.y.toFixed(0)})`);
+                // Call createExplosion, passing the rocket's position and the player hit directly
+                this.createExplosion(rocket.x, rocket.y, hitPlayer);
+                this.activeRockets.splice(i, 1); // Remove the exploded rocket
+                 audioManager.playSound('EXPLOSION_1'); // Keep sound with explosion event
             }
         }
 
@@ -1237,30 +1322,21 @@ export class GameManager {
                 }
 
                 // --- Debug Keys ---
-                // DEBUG: Spawn Rocket Launcher on '1' key press
+                // DEBUG: Cycle power-up type on '1' key press
                 if (this.inputHandler.wasKeyJustPressed('1')) {
-                    this.spawnSpecificPowerup(PowerupType.ROCKET_LAUNCHER, C.SCREEN_WIDTH / 2, 50);
+                    this.debugSelectedPowerupIndex = (this.debugSelectedPowerupIndex + 1) % this.debugAvailablePowerupTypes.length;
+                    const selectedType = this.debugAvailablePowerupTypes[this.debugSelectedPowerupIndex];
+                    console.log(`DEBUG: Selected power-up type: ${selectedType}`);
                 }
-                // DEBUG: Toggle Player 1 Itching on '2' key press
+                // DEBUG: Spawn selected power-up on '2' key press
                 if (this.inputHandler.wasKeyJustPressed('2')) {
-                    this.player1.isItching = !this.player1.isItching;
-                    console.log(`DEBUG: Toggled Player 1 itching: ${this.player1.isItching}`);
+                    const typeToSpawn = this.debugAvailablePowerupTypes[this.debugSelectedPowerupIndex];
+                    const spawnX = Math.random() * (C.SCREEN_WIDTH - 40) + 20; // Random X
+                    const spawnY = -50; // Start above screen
+                    this.spawnSpecificPowerup(typeToSpawn, spawnX, spawnY);
+                    console.log(`DEBUG: Spawned ${typeToSpawn} via key press.`);
                 }
-                // DEBUG: Spawn Bow Powerup on '3' key press
-                if (this.inputHandler.wasKeyJustPressed('3')) {
-                    this.spawnSpecificPowerup(PowerupType.BOW, C.SCREEN_WIDTH / 2, 50);
-                    console.log("DEBUG: Spawned Bow Powerup");
-                }
-                // DEBUG: Toggle Player 1 Sword on '4' key press
-                if (this.inputHandler.wasKeyJustPressed('4')) {
-                    this.player1.isSword = !this.player1.isSword;
-                    // Ensure other weapons are removed if sword is equipped
-                    if (this.player1.isSword) {
-                        this.player1.hasBow = false;
-                        this.player1.hasRocketLauncher = false;
-                    }
-                    console.log(`DEBUG: Toggled Player 1 Sword: ${this.player1.isSword}`);
-                }
+                // REMOVED old '3' and '4' debug keys
                 
                 // Emit jump particles (outside the key press check, triggered by Player state)
                 if (this.player1.isJumping && !this.player1.hasJumpedThisPress) {
@@ -1275,13 +1351,15 @@ export class GameManager {
                 }
 
                 // Update Entities
-                this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
+                // Pass goal enlargement state to player update
+                this.player1.update(dt, C.GROUND_Y, C.SCREEN_WIDTH, this.isPlayer1GoalEnlarged, this.isPlayer2GoalEnlarged);
                 if (this.player1.justLanded) {
                     this.particleSystem.emit('landingDust', this.player1.x, this.player1.y, 12, 
                         { scale: this.player1.sizeMultiplier, landingVelocity: this.player1.lastLandingVy });
                     this.player1.justLanded = false; // Reset flag immediately after use
                 }
-                this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH);
+                // Pass goal enlargement state to player update
+                this.player2.update(dt, C.GROUND_Y, C.SCREEN_WIDTH, this.isPlayer1GoalEnlarged, this.isPlayer2GoalEnlarged);
                  if (this.player2.justLanded) {
                     this.particleSystem.emit('landingDust', this.player2.x, this.player2.y, 12, 
                         { scale: this.player2.sizeMultiplier, landingVelocity: this.player2.lastLandingVy });
@@ -1465,7 +1543,9 @@ export class GameManager {
             ballFreezeTimer: this.ball['freezeTimer'],
             // Timers for UI messages (already passed)
             goalMessageTimer: this.goalMessageTimer,
-            matchOverTimer: this.matchOverTimer
+            matchOverTimer: this.matchOverTimer,
+            // Debug state
+            debugSelectedPowerupType: this.debugAvailablePowerupTypes[this.debugSelectedPowerupIndex]
             // Pass winner info if needed later
         };
         this.uiManager.draw(uiState);
@@ -1596,7 +1676,7 @@ export class GameManager {
         this.ctx.strokeRect(p2BackPoleX, p2GoalY, C.GOAL_POST_THICKNESS, p2GoalHeight);
     }
 
-    private createExplosion(x: number, y: number): void {
+    private createExplosion(x: number, y: number, hitPlayer: Player | null): void {
         console.log(`Creating REAL Explosion at (${x.toFixed(0)}, ${y.toFixed(0)}) with radius ${C.ROCKET_BLAST_RADIUS}`);
         audioManager.playSound('ROCKET_EXPLODE_1'); // Ensure sound plays
 
@@ -1605,6 +1685,9 @@ export class GameManager {
 
         // Apply effects to Players
         players.forEach(player => {
+            // --- Check if this player was the one directly hit --- 
+            const wasDirectlyHit = player === hitPlayer; // Check against the passed player
+
             const dx = player.x - x;
             const dy = (player.y - player.torsoLength / 2) - y; // Use player torso center approx
             const distSq = dx * dx + dy * dy;
@@ -1627,9 +1710,13 @@ export class GameManager {
                     pushVecY = Math.sin(randomAngle);
                 }
 
-                // Add upward force (negative Y) and some horizontal pushback
-                player.vy = C.EXPLOSION_UPWARD_FORCE + (pushVecY * 0.3); // Strong upward force + some outward push
-                player.startTumble(); // Ensure player tumbles
+                // --- Apply Forces: ADD blast force to existing velocity --- 
+                player.vx += pushVecX * forceMagnitude;
+                player.vy += (pushVecY * forceMagnitude * 0.3) - C.ROCKET_PLAYER_UPWARD_BOOST; // Combine outward Y push with upward boost
+                
+                console.log(`  Player ${player === this.player1 ? 1:2} (DirectHit: ${wasDirectlyHit}) Applying blast force: vx+=${(pushVecX * forceMagnitude).toFixed(1)}, vy+=${((pushVecY * forceMagnitude * 0.3) - C.ROCKET_PLAYER_UPWARD_BOOST).toFixed(1)}`);
+
+                player.startTumble(); // Ensure player tumbles if in blast radius
             }
         });
 

@@ -46,7 +46,7 @@ export const PLAYER_LIMB_WIDTH = 6;
 export const BALL_RADIUS = 15; // Increased radius to match reference
 
 // Field Layout
-export const GOAL_WIDTH = 80;
+export const GOAL_WIDTH = 100;
 export const GOAL_HEIGHT = 150; // Distance from ground to crossbar
 export const GOAL_POST_THICKNESS = 10;
 export const GOAL_Y_POS = GROUND_Y - GOAL_HEIGHT; // Y coordinate of the top of the goal posts/bottom of crossbar
@@ -127,8 +127,21 @@ export const ASSETS = {
         NUM_4: 'sounds/4.mp3',
         NUM_5: 'sounds/5.mp3',
         // Add NUM_6 to NUM_9 if needed
+    },
+    IMAGES: { // NEW SECTION FOR IMAGES
+        POWERUPS: {
+            SPEED_BOOST: 'images/powerups/powerup_speed_boost.png',
+            SUPER_JUMP: 'images/powerups/powerup_super_jump.png',
+            BIG_PLAYER: 'images/powerups/powerup_big_player.png',
+            BALL_FREEZE: 'images/powerups/powerup_ball_freeze.png',
+            ROCKET_LAUNCHER: 'images/powerups/powerup_rocket_launcher.png',
+            BOW: 'images/powerups/powerup_bow.png',
+            SWORD: 'images/powerups/powerup_sword.png',
+            GOAL_ENLARGE: 'images/powerups/powerup_goal_enlarge.png'
+            // Add paths for other powerups like shrink, shield later
+        }
+        // Add other image categories later (backgrounds, UI elements, etc.)
     }
-    // Add other asset types like IMAGES later if needed
 };
 
 // Player Animation Constants
@@ -145,14 +158,13 @@ export const PUSHBACK_DURATION = 0.2; // Duration (in seconds) the player is pus
 // ... existing code ... 
 
 // Rocket Launcher Constants
-export const ROCKET_SPEED = 400; // pixels per second
-export const ROCKET_BLAST_RADIUS = 80; // pixels
-export const ROCKET_EXPLOSION_FORCE = 800; // Magnitude of pushback
+export const ROCKET_SPEED = 800; // Speed of the rocket
+export const ROCKET_EXPLOSION_FORCE = 1200; // Force applied by the explosion
+export const ROCKET_BLAST_RADIUS = 150; // Radius of the explosion's effect
+export const ROCKET_HIT_PUSHBACK_FORCE = 200; // Direct force applied to player when hit by rocket (pre-explosion)
 export const ROCKET_PLAYER_UPWARD_BOOST = 150; // Extra upward push for players in blast
 export const ROCKET_BALL_UPWARD_BOOST = 100; // Upward push for ball in blast
 export const ROCKET_TUMBLE_DURATION = 1.5; // seconds player tumbles after hit
-export const EXPLOSION_RADIUS = 80; // pixels
-export const EXPLOSION_UPWARD_FORCE = -400; // pixels/sec vertical velocity applied on hit
 
 // Bow and Arrow Constants
 export const ARROW_SPEED = 600; // pixels per second
@@ -161,6 +173,8 @@ export const ARROW_DAMAGE_FORCE = 400; // Magnitude of pushback from arrow hit
 export const ARROW_TUMBLE_DURATION = 1.0; // seconds player tumbles after hit by arrow
 export const BOW_SWAY_SPEED = 0.3; // Cycles per second for the auto-aim sway
 export const BOW_SWAY_ANGLE_MAX = Math.PI / 3; // Increased max angle again (was PI / 5 -> approx 60 degrees total)
+export const ARROW_EXPLOSION_RADIUS = 40;
+export const ARROW_EXPLOSION_FORCE = 400;
 
 // Sword Constants
 export const SWORD_HIT_FORCE = 600; // Pushback force when sword hits a player
@@ -168,3 +182,8 @@ export const SWORD_BALL_FORCE = 800; // Force applied to the ball when hit by sw
 export const SWORD_TUMBLE_ROTATION_SPEED = 6 * Math.PI; // Rotation speed for sword tumble (radians/sec)
 
 // Other constants as needed... 
+
+export const POWERUP_ICON_SIZE = 20;
+export const MAX_SCORE_DIGITS = 2;
+export const MATCH_POINT_LIMIT = 7;
+export const DEBUG_MODE = false;

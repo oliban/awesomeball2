@@ -20,6 +20,7 @@ export class Rocket {
     private particleSystem: ParticleSystem;
     private smokeEmitTimer: number = 0;
     private smokeEmitInterval: number = 0.03; // Emit smoke every 0.03 seconds
+    public exploded: boolean = false;
 
     constructor(x: number, y: number, vx: number, vy: number, owner: Player, particleSystem: ParticleSystem) {
         this.x = x;
